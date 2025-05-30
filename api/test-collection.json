@@ -1,0 +1,199 @@
+{
+  "info": {
+    "name": "Galactic Parallax API",
+    "description": "Test collection for the search API",
+    "version": "1.0.0"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8787",
+      "type": "string"
+    },
+    {
+      "key": "jwtToken",
+      "value": "YOUR_JWT_TOKEN_HERE",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "health"]
+        }
+      }
+    },
+    {
+      "name": "Root Endpoint",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/",
+          "host": ["{{baseUrl}}"],
+          "path": [""]
+        }
+      }
+    },
+    {
+      "name": "Search Images - Landscape",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwtToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/search/images?q=mountain sunset&orientation=landscape&count=5",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "search", "images"],
+          "query": [
+            {
+              "key": "q",
+              "value": "mountain sunset"
+            },
+            {
+              "key": "orientation",
+              "value": "landscape"
+            },
+            {
+              "key": "count",
+              "value": "5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Search Images - Portrait",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwtToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/search/images?q=abstract art&orientation=portrait&count=3",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "search", "images"],
+          "query": [
+            {
+              "key": "q",
+              "value": "abstract art"
+            },
+            {
+              "key": "orientation",
+              "value": "portrait"
+            },
+            {
+              "key": "count",
+              "value": "3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Search Suggestions - General",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwtToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/search/suggestions",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "search", "suggestions"]
+        }
+      }
+    },
+    {
+      "name": "Search Suggestions - Landscape",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwtToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/search/suggestions?category=landscape",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "search", "suggestions"],
+          "query": [
+            {
+              "key": "category",
+              "value": "landscape"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Search Health Check",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwtToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/search/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "search", "health"]
+        }
+      }
+    },
+    {
+      "name": "Test 404 Error",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/nonexistent",
+          "host": ["{{baseUrl}}"],
+          "path": ["nonexistent"]
+        }
+      }
+    },
+    {
+      "name": "Test Missing Auth",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/search/images?q=test",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "search", "images"],
+          "query": [
+            {
+              "key": "q",
+              "value": "test"
+            }
+          ]
+        }
+      }
+    }
+  ]
+} 

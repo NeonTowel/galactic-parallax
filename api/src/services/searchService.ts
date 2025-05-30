@@ -3,7 +3,7 @@ import { SearchRequest, SearchResponse, ApiResponse } from '../types';
 export class SearchService {
   private apiKey: string;
   private searchEngineId: string;
-  private baseUrl = 'https://www.googleapis.com/customsearch/v1';
+  private baseUrl = 'https://customsearch.googleapis.com/customsearch/v1';
 
   constructor(apiKey: string, searchEngineId: string) {
     this.apiKey = apiKey;
@@ -15,12 +15,12 @@ export class SearchService {
    */
   private craftSearchQuery(userQuery: string, orientation?: 'landscape' | 'portrait'): string {
     // Base terms for high-quality wallpapers
-    const qualityTerms = ['wallpaper', '2K', 'high resolution', 'ultra HD'];
+    const qualityTerms = ['wallpaper', '2K OR UHD OR 4K OR "ultra hd"'];
     
     // Orientation-specific terms
     const orientationTerms = orientation === 'portrait' 
-      ? ['vertical', 'mobile wallpaper', '9:16'] 
-      : ['desktop wallpaper', 'widescreen', '16:9', '21:9'];
+      ? ['mobile'] 
+      : ['widescreen'];
 
     // Combine user query with quality and orientation terms
     const searchTerms = [
@@ -51,19 +51,9 @@ export class SearchService {
     url.searchParams.set('num', String(params.count || 10));
     url.searchParams.set('start', String(params.start || 1));
     url.searchParams.set('safe', 'off'); // Disable safe search as requested
-    url.searchParams.set('imgSize', 'xxlarge'); // Prefer larger images
+    url.searchParams.set('imgSize', 'huge'); // Prefer larger images
     url.searchParams.set('imgType', 'photo'); // Focus on photographic content
-    url.searchParams.set('fileType', 'jpg,png,webp'); // High-quality formats
-    url.searchParams.set('rights', 'cc_publicdomain,cc_attribute,cc_sharealike,cc_noncommercial,cc_nonderived'); // Prefer images with usage rights
-
-    // Add orientation-specific filters
-    if (params.orientation === 'landscape') {
-      url.searchParams.set('imgSize', 'xxlarge');
-      url.searchParams.set('as_sitesearch', 'wallpaperscraft.com OR wallpaperaccess.com OR unsplash.com');
-    } else if (params.orientation === 'portrait') {
-      url.searchParams.set('imgSize', 'large');
-      url.searchParams.set('as_sitesearch', 'unsplash.com OR pexels.com');
-    }
+    url.searchParams.set('fileType', 'jpg,png'); // High-quality formats
 
     return url.toString();
   }
@@ -111,7 +101,8 @@ export class SearchService {
       const minWidth = 1920;
       const minHeight = 1080;
       
-      return image.width >= minWidth && image.height >= minHeight;
+      return (image.width >= minWidth || image.height >= minWidth) && 
+             (image.width >= minHeight || image.height >= minHeight);
     });
 
     // Sort by image size (larger images first)
@@ -168,8 +159,9 @@ export class SearchService {
 
       return {
         success: true,
-        data: filteredResponse,
-        message: `Found ${filteredResponse.items?.length || 0} high-quality results`
+        //data: filteredResponse,
+        data: searchResponse,
+        message: `Found ${filteredResponse.items?.length || 0} high-quality results out of ${searchResponse.searchInformation?.totalResults || 0} total results`
       };
 
     } catch (error) {

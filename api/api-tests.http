@@ -1,0 +1,63 @@
+### Galactic Parallax API Tests
+### Install VS Code REST Client extension to use this file
+
+@baseUrl = http://localhost:8787
+
+#@jwtToken = "..."
+@jwtToken = YOUR_JWT_TOKEN_HERE
+
+### Test Root Endpoint
+GET {{baseUrl}}/
+
+### Test Health Check
+GET {{baseUrl}}/api/health
+
+### Test 404 Error
+GET {{baseUrl}}/nonexistent
+
+### Test Search Images - No Auth (Should Fail)
+GET {{baseUrl}}/api/search/images?q=test
+
+### Test Search Images - Landscape
+GET {{baseUrl}}/api/search/images?q=cyberpunk&orientation=landscape&count=10
+Authorization: Bearer {{jwtToken}}
+
+### Test Search Images - Portrait
+GET {{baseUrl}}/api/search/images?q=abstract art&orientation=portrait&count=2
+Authorization: Bearer {{jwtToken}}
+
+### Test Search Images - No Query (Should Fail)
+GET {{baseUrl}}/api/search/images?orientation=landscape
+Authorization: Bearer {{jwtToken}}
+
+### Test Search Images - Invalid Orientation
+GET {{baseUrl}}/api/search/images?q=test&orientation=invalid
+Authorization: Bearer {{jwtToken}}
+
+### Test Search Images - Invalid Count
+GET {{baseUrl}}/api/search/images?q=test&count=20
+Authorization: Bearer {{jwtToken}}
+
+### Test Search Suggestions - General
+GET {{baseUrl}}/api/search/suggestions
+Authorization: Bearer {{jwtToken}}
+
+### Test Search Suggestions - Landscape
+GET {{baseUrl}}/api/search/suggestions?category=landscape
+Authorization: Bearer {{jwtToken}}
+
+### Test Search Suggestions - Portrait
+GET {{baseUrl}}/api/search/suggestions?category=portrait
+Authorization: Bearer {{jwtToken}}
+
+### Test Search Suggestions - Invalid Category
+GET {{baseUrl}}/api/search/suggestions?category=invalid
+Authorization: Bearer {{jwtToken}}
+
+### Test Search Health Check
+GET {{baseUrl}}/api/search/health
+Authorization: Bearer {{jwtToken}}
+
+### Test Complex Search Query
+GET {{baseUrl}}/api/search/images?q=space galaxy nebula&orientation=landscape&count=5&start=1
+Authorization: Bearer {{jwtToken}} 
