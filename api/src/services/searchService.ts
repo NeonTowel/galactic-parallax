@@ -54,6 +54,8 @@ export class SearchService {
     url.searchParams.set('imgSize', 'huge'); // Prefer larger images
     url.searchParams.set('imgType', 'photo'); // Focus on photographic content
     url.searchParams.set('fileType', 'jpg,png'); // High-quality formats
+    url.searchParams.set('filter', '1'); // Turn on duplicate content filter
+    url.searchParams.set('imgColorType', 'color'); // Search for color images
 
     return url.toString();
   }
