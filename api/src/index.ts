@@ -12,7 +12,7 @@ const app = new Hono<{ Bindings: Bindings }>();
 
 // CORS configuration for SvelteKit frontend
 app.use('*', cors({
-  origin: ['http://localhost:5173', 'https://galactic-parallax-dev.netlify.app'],
+  origin: ['http://localhost:5173', 'https://galactic-parallax.netlify.app'],
   allowHeaders: ['Content-Type', 'Authorization'],
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
 }));
