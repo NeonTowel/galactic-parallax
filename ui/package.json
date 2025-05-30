@@ -23,5 +23,8 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
 	},
-	"type": "module"
+	"type": "module",
+	"dependencies": {
+		"@auth0/auth0-spa-js": "^2.2.0"
+	}
 }
