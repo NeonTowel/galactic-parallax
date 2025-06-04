@@ -8,7 +8,7 @@
     logout,
   } from "$lib/auth.js";
   import { apiService } from "$lib/api.js";
-  import type { SearchResponse, SearchImage } from "$lib/types.js";
+  import type { SearchResponse, SearchResult } from "$lib/types.js";
 
   let searchQuery = "";
   let isSearching = false;
@@ -18,11 +18,12 @@
   let currentPage = 1;
   const resultsPerPage = 10;
 
-  // Calculate pagination
-  $: totalResults = searchResults?.data?.searchInformation?.totalResults
-    ? parseInt(searchResults.data.searchInformation.totalResults)
-    : 0;
-  $: totalPages = Math.ceil(totalResults / resultsPerPage);
+  // Calculate pagination from intermediary schema
+  $: pagination = searchResults?.data?.pagination;
+  $: totalResults = pagination?.totalResults || 0;
+  $: totalPages = pagination?.totalPages || 0;
+  $: hasNextPage = pagination?.hasNextPage || false;
+  $: hasPreviousPage = pagination?.hasPreviousPage || false;
   $: startIndex = (currentPage - 1) * resultsPerPage + 1;
 
   async function handleSearch(page: number = 1) {
@@ -296,51 +297,56 @@
               Press Enter to search for wallpapers
             </p>
           {/if}
+
+          <!-- Error Display -->
+          {#if searchError}
+            <div class="mt-4">
+              <div
+                class="bg-rose-pine-love/10 border border-rose-pine-love/20 rounded-lg p-4"
+              >
+                <div class="flex items-center space-x-3">
+                  <div class="text-rose-pine-love">
+                    <svg
+                      class="w-5 h-5"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fill-rule="evenodd"
+                        d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                        clip-rule="evenodd"
+                      />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 class="text-rose-pine-love font-semibold">
+                      Search Error
+                    </h3>
+                    <p class="text-rose-pine-text">{searchError}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          {/if}
         </div>
       </div>
 
-      <!-- Error Display -->
-      {#if searchError}
-        <div class="max-w-6xl mx-auto px-6 py-4">
-          <div
-            class="bg-rose-pine-love/10 border border-rose-pine-love/20 rounded-lg p-4"
-          >
-            <div class="flex items-center space-x-3">
-              <div class="text-rose-pine-love">
-                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path
-                    fill-rule="evenodd"
-                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                    clip-rule="evenodd"
-                  />
-                </svg>
-              </div>
-              <div>
-                <h3 class="text-rose-pine-love font-semibold">Search Error</h3>
-                <p class="text-rose-pine-text">{searchError}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      {/if}
-
       <!-- Search Results -->
-      {#if searchResults && searchResults.data.items}
+      {#if searchResults && searchResults.data.results}
         <div class="max-w-6xl mx-auto px-6 py-6">
           <!-- Results Info -->
           <div class="mb-6 flex flex-wrap items-center justify-between gap-4">
             <div class="text-rose-pine-muted">
               <p>
-                Found {searchResults.data.searchInformation
-                  .formattedTotalResults} results in {searchResults.data
-                  .searchInformation.formattedSearchTime} seconds
+                Found {pagination?.totalResults.toLocaleString()} results in {searchResults.data.searchInfo.searchTime.toFixed(
+                  2
+                )} seconds
               </p>
               <p class="text-sm">
                 Showing {startIndex}-{Math.min(
                   startIndex + resultsPerPage - 1,
                   totalResults
-                )} of {searchResults.data.searchInformation
-                  .formattedTotalResults}
+                )} of {pagination?.totalResults.toLocaleString()}
               </p>
             </div>
           </div>
@@ -349,14 +355,14 @@
           <div
             class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mb-8"
           >
-            {#each searchResults.data.items as image (image.link)}
+            {#each searchResults.data.results as result (result.id)}
               <div
                 class="group relative bg-rose-pine-surface rounded-lg overflow-hidden border border-rose-pine-overlay hover:border-rose-pine-subtle transition-all duration-200"
               >
                 <div class="aspect-video relative overflow-hidden">
                   <img
-                    src={image.image.thumbnailLink}
-                    alt={image.title}
+                    src={result.thumbnailUrl}
+                    alt={result.title}
                     class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                     loading="lazy"
                   />
@@ -369,17 +375,19 @@
                   <h3
                     class="text-sm font-medium text-rose-pine-text line-clamp-2 mb-1"
                   >
-                    {image.title}
+                    {result.title}
                   </h3>
                   <p class="text-xs text-rose-pine-muted line-clamp-1 mb-2">
-                    {image.displayLink}
+                    {result.sourceDomain}
                   </p>
                   <div
                     class="flex items-center justify-between text-xs text-rose-pine-muted"
                   >
-                    <span>{image.image.width}×{image.image.height}</span>
+                    <span>{result.width}×{result.height}</span>
                     <span
-                      >{(image.image.byteSize / 1024 / 1024).toFixed(1)}MB</span
+                      >{result.fileSize
+                        ? (result.fileSize / 1024 / 1024).toFixed(1) + "MB"
+                        : "N/A"}</span
                     >
                   </div>
                 </div>
@@ -390,7 +398,7 @@
                 >
                   <div class="flex space-x-2">
                     <a
-                      href={image.link}
+                      href={result.url}
                       target="_blank"
                       rel="noopener noreferrer"
                       class="px-3 py-1 bg-rose-pine-iris text-rose-pine-base text-sm font-medium rounded hover:bg-rose-pine-iris/90 transition-colors"
@@ -398,7 +406,7 @@
                       View Full
                     </a>
                     <a
-                      href={image.image.contextLink}
+                      href={result.sourceUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       class="px-3 py-1 bg-rose-pine-surface text-rose-pine-text text-sm font-medium rounded hover:bg-rose-pine-overlay transition-colors"
@@ -417,7 +425,7 @@
               <!-- Previous button -->
               <button
                 on:click={() => goToPage(currentPage - 1)}
-                disabled={currentPage === 1}
+                disabled={!hasPreviousPage}
                 class="px-3 py-2 text-rose-pine-muted hover:text-rose-pine-text border border-rose-pine-overlay hover:border-rose-pine-subtle rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Previous
@@ -438,7 +446,7 @@
               <!-- Next button -->
               <button
                 on:click={() => goToPage(currentPage + 1)}
-                disabled={currentPage === totalPages}
+                disabled={!hasNextPage}
                 class="px-3 py-2 text-rose-pine-muted hover:text-rose-pine-text border border-rose-pine-overlay hover:border-rose-pine-subtle rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Next

@@ -1,4 +1,53 @@
-// Search result types based on the API response structure
+// Intermediary Search Schema - matches backend
+export interface SearchResult {
+  id: string;
+  title: string;
+  url: string;
+  thumbnailUrl: string;
+  sourceUrl: string;
+  sourceDomain: string;
+  description: string;
+  width: number;
+  height: number;
+  fileSize?: number;
+  mimeType: string;
+  fileFormat: string;
+}
+
+export interface PaginationInfo {
+  currentPage: number;
+  totalResults: number;
+  resultsPerPage: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+  nextStartIndex?: number;
+  previousStartIndex?: number;
+}
+
+export interface SearchData {
+  results: SearchResult[];
+  pagination: PaginationInfo;
+  searchInfo: {
+    query: string;
+    orientation?: 'landscape' | 'portrait';
+    searchTime: number;
+    searchEngine: string;
+    timestamp: string;
+  };
+}
+
+export interface SearchResponse {
+  success: boolean;
+  data: SearchData;
+  message: string;
+  user: string;
+  searchedAt: string;
+  cached?: boolean;
+  cacheKey?: string;
+}
+
+// Legacy types for backward compatibility (deprecated)
 export interface SearchImage {
   kind: string;
   title: string;
@@ -51,33 +100,6 @@ export interface SearchQueries {
   }>;
 }
 
-export interface SearchData {
-  kind: string;
-  url: {
-    type: string;
-    template: string;
-  };
-  queries: SearchQueries;
-  context: {
-    title: string;
-  };
-  searchInformation: {
-    searchTime: number;
-    formattedSearchTime: string;
-    totalResults: string;
-    formattedTotalResults: string;
-  };
-  items: SearchImage[];
-}
-
-export interface SearchResponse {
-  success: boolean;
-  data: SearchData;
-  message: string;
-  user: string;
-  searchedAt: string;
-}
-
 export interface ApiError {
   success: false;
   error: string;
@@ -90,4 +112,5 @@ export interface SearchParams {
   orientation?: 'landscape' | 'portrait';
   count?: number;
   start?: number;
+  engine?: string;
 } 

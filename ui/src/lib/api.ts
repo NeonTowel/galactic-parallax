@@ -59,8 +59,66 @@ class ApiService {
       searchParams.append('start', params.start.toString());
     }
 
+    if (params.engine) {
+      searchParams.append('engine', params.engine);
+    }
+
     const endpoint = `/api/search/images?${searchParams.toString()}`;
     return this.makeRequest<SearchResponse>(endpoint);
+  }
+
+  async getAvailableEngines(): Promise<{
+    success: boolean;
+    data: {
+      engines: Array<{ name: string; key: string }>;
+      defaultEngine: string;
+      totalEngines: number;
+    };
+  }> {
+    const endpoint = '/api/search/engines';
+    return this.makeRequest(endpoint);
+  }
+
+  async getSearchHealth(engine?: string): Promise<{
+    success: boolean;
+    data: {
+      healthy: boolean;
+      engines: Array<{ key: string; name: string; healthy: boolean; message: string }>;
+    };
+  }> {
+    const searchParams = new URLSearchParams();
+    if (engine) {
+      searchParams.append('engine', engine);
+    }
+    
+    const endpoint = `/api/search/health${searchParams.toString() ? '?' + searchParams.toString() : ''}`;
+    return this.makeRequest(endpoint);
+  }
+
+  async getCacheStats(): Promise<{
+    success: boolean;
+    data: {
+      size: number;
+      keys: string[];
+    };
+  }> {
+    const endpoint = '/api/search/cache/stats';
+    return this.makeRequest(endpoint);
+  }
+
+  async clearCache(pattern?: string): Promise<{
+    success: boolean;
+    data: {
+      message: string;
+    };
+  }> {
+    const searchParams = new URLSearchParams();
+    if (pattern) {
+      searchParams.append('pattern', pattern);
+    }
+    
+    const endpoint = `/api/search/cache${searchParams.toString() ? '?' + searchParams.toString() : ''}`;
+    return this.makeRequest(endpoint, { method: 'DELETE' });
   }
 }
 
