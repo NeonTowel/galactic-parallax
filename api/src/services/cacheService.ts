@@ -1,4 +1,4 @@
-import { SearchRequest, SearchResponse, ApiResponse } from '../types';
+import { SearchRequest, ApiResponse } from '../types';
 
 export interface CacheConfig {
   ttl: number; // Time to live in seconds
@@ -58,7 +58,10 @@ export class CacheService {
   /**
    * Creates a cache-aware search key for search requests
    */
-  static createSearchCacheKey(request: SearchRequest, userId?: string): string {
+  static createSearchCacheKey(
+    request: SearchRequest & { engine?: string }, 
+    userId?: string
+  ): string {
     return this.generateCacheKey({
       prefix: 'search',
       params: {
@@ -66,6 +69,7 @@ export class CacheService {
         orientation: request.orientation || 'any',
         count: request.count || 10,
         start: request.start || 1,
+        engine: request.engine || 'default',
         // Include user ID for personalized caching if needed
         ...(userId && { userId })
       }

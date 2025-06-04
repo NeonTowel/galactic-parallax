@@ -12,8 +12,9 @@ const app = new Hono<{
 }>();
 
 // Environment validation function
-function validateEnvironment(env: Bindings): { isValid: boolean; errors: string[] } {
+function validateEnvironment(env: Bindings): { isValid: boolean; errors: string[]; warnings: string[] } {
   const errors: string[] = [];
+  const warnings: string[] = [];
   
   // Required Auth0 configuration
   if (!env.AUTH0_DOMAIN) {
@@ -23,12 +24,12 @@ function validateEnvironment(env: Bindings): { isValid: boolean; errors: string[
     errors.push('AUTH0_AUDIENCE is required');
   }
   
-  // Required Google Search API configuration
+  // Google Search API configuration (warn if missing, don't fail)
   if (!env.GOOGLE_SEARCH_API_KEY) {
-    errors.push('GOOGLE_SEARCH_API_KEY is required');
+    warnings.push('GOOGLE_SEARCH_API_KEY is not configured - Google Search will not be available');
   }
   if (!env.GOOGLE_SEARCH_ENGINE_ID) {
-    errors.push('GOOGLE_SEARCH_ENGINE_ID is required');
+    warnings.push('GOOGLE_SEARCH_ENGINE_ID is not configured - Google Search will not be available');
   }
   
   // Validate Auth0 domain format
@@ -36,20 +37,26 @@ function validateEnvironment(env: Bindings): { isValid: boolean; errors: string[
     errors.push('AUTH0_DOMAIN must be a valid Auth0 domain (e.g., your-tenant.auth0.com)');
   }
   
-  // Validate Google Search Engine ID format (basic check)
+  // Validate Google Search Engine ID format (basic check) - only if provided
   if (env.GOOGLE_SEARCH_ENGINE_ID && env.GOOGLE_SEARCH_ENGINE_ID.length < 10) {
-    errors.push('GOOGLE_SEARCH_ENGINE_ID appears to be invalid (too short)');
+    warnings.push('GOOGLE_SEARCH_ENGINE_ID appears to be invalid (too short)');
   }
   
   return {
     isValid: errors.length === 0,
-    errors
+    errors,
+    warnings
   };
 }
 
 // Middleware to validate environment on each request
 app.use('*', async (c, next) => {
   const validation = validateEnvironment(c.env);
+  
+  // Log warnings but don't fail
+  if (validation.warnings.length > 0) {
+    console.warn('Environment warnings:', validation.warnings);
+  }
   
   if (!validation.isValid) {
     return c.json({
@@ -70,6 +77,11 @@ app.use('*', cors({
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
 }));
 
+// Handle OPTIONS requests before JWT middleware
+app.options('*', (c) => {
+  return new Response(null, { status: 200 });
+});
+
 // JWT middleware for protected routes with enhanced error handling
 app.use('/api/search/*', async (c, next) => {
   try {
@@ -78,10 +90,12 @@ app.use('/api/search/*', async (c, next) => {
     });
     return jwkMiddleware(c, next);
   } catch (error) {
+    console.error('JWT middleware error:', error);
     return c.json({
       success: false,
       error: 'Authentication service error',
-      message: 'Unable to validate JWT token. Please check your Auth0 configuration.'
+      message: 'Unable to validate JWT token. Please check your Auth0 configuration.',
+      details: error instanceof Error ? error.message : 'Unknown error'
     }, 500);
   }
 });
@@ -115,9 +129,11 @@ app.get('/api/health', (c) => {
       googleSearch: {
         configured: !!(c.env.GOOGLE_SEARCH_API_KEY && c.env.GOOGLE_SEARCH_ENGINE_ID),
         hasApiKey: !!c.env.GOOGLE_SEARCH_API_KEY,
-        hasSearchEngineId: !!c.env.GOOGLE_SEARCH_ENGINE_ID
+        hasSearchEngineId: !!c.env.GOOGLE_SEARCH_ENGINE_ID,
+        status: (c.env.GOOGLE_SEARCH_API_KEY && c.env.GOOGLE_SEARCH_ENGINE_ID) ? 'available' : 'fallback to mock'
       }
-    }
+    },
+    warnings: validation.warnings
   };
   
   if (!validation.isValid) {

@@ -19,8 +19,55 @@ export interface SearchRequest {
   start?: number;
 }
 
-export interface SearchResponse {
-  items: SearchResultItem[];
+// Intermediary Search Schema - Common interface for all search engines
+export interface IntermediarySearchResult {
+  id: string;
+  title: string;
+  url: string;
+  thumbnailUrl: string;
+  sourceUrl: string;
+  sourceDomain: string;
+  description: string;
+  width: number;
+  height: number;
+  fileSize?: number;
+  mimeType: string;
+  fileFormat: string;
+}
+
+export interface IntermediaryPaginationInfo {
+  currentPage: number;
+  totalResults: number;
+  resultsPerPage: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+  nextStartIndex?: number;
+  previousStartIndex?: number;
+}
+
+export interface IntermediarySearchResponse {
+  results: IntermediarySearchResult[];
+  pagination: IntermediaryPaginationInfo;
+  searchInfo: {
+    query: string;
+    orientation?: 'landscape' | 'portrait';
+    searchTime: number;
+    searchEngine: string;
+    timestamp: string;
+  };
+}
+
+// Abstract Search Engine Interface
+export interface SearchEngine {
+  name: string;
+  search(request: SearchRequest): Promise<ApiResponse<IntermediarySearchResponse>>;
+  healthCheck(): Promise<{ healthy: boolean; message: string }>;
+}
+
+// Google Search API specific types (kept for internal use)
+export interface GoogleSearchResponse {
+  items: GoogleSearchResultItem[];
   searchInformation: {
     totalResults: string;
     searchTime: number;
@@ -43,7 +90,7 @@ export interface SearchResponse {
   };
 }
 
-export interface SearchResultItem {
+export interface GoogleSearchResultItem {
   title: string;
   link: string;
   displayLink: string;
@@ -61,6 +108,10 @@ export interface SearchResultItem {
     thumbnailWidth: number;
   };
 }
+
+// Legacy types for backward compatibility (deprecated)
+export interface SearchResponse extends GoogleSearchResponse {}
+export interface SearchResultItem extends GoogleSearchResultItem {}
 
 export interface ApiResponse<T = any> {
   success: boolean;

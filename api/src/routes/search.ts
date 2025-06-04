@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { SearchService } from '../services/searchService';
+import { UnifiedSearchService } from '../services/unifiedSearchService';
 import { CacheService } from '../services/cacheService';
 import { SearchRequest, Bindings, JWTPayload } from '../types';
 
@@ -10,15 +10,15 @@ const search = new Hono<{
   };
 }>();
 
-// Initialize search service
-const getSearchService = (env: Bindings) => {
-  return new SearchService(env.GOOGLE_SEARCH_API_KEY, env.GOOGLE_SEARCH_ENGINE_ID);
+// Initialize unified search service
+const getUnifiedSearchService = (env: Bindings) => {
+  return new UnifiedSearchService(env);
 };
 
 // Protected search endpoint - main image search with caching
 search.get('/images', async (c) => {
   try {
-    const searchService = getSearchService(c.env);
+    const searchService = getUnifiedSearchService(c.env);
     const payload = c.get('jwtPayload');
     
     // Extract query parameters
@@ -26,6 +26,7 @@ search.get('/images', async (c) => {
     const orientation = c.req.query('orientation') as 'landscape' | 'portrait' | undefined;
     const count = c.req.query('count') ? parseInt(c.req.query('count')!) : undefined;
     const start = c.req.query('start') ? parseInt(c.req.query('start')!) : undefined;
+    const engine = c.req.query('engine'); // Optional engine selection
 
     if (!query) {
       return c.json({
@@ -41,14 +42,17 @@ search.get('/images', async (c) => {
       start
     };
 
-    // Create cache key for this search request
-    const cacheKey = CacheService.createSearchCacheKey(searchRequest, payload.sub);
+    // Create cache key for this search request (include engine in cache key)
+    const cacheKey = CacheService.createSearchCacheKey(
+      { ...searchRequest, engine }, 
+      payload.sub
+    );
 
     // Use cache-aware search operation
     const { data: result, fromCache } = await CacheService.withCache(
       cacheKey,
       async () => {
-        return await searchService.search(searchRequest);
+        return await searchService.search(searchRequest, engine);
       },
       'search'
     );
@@ -67,9 +71,11 @@ search.get('/images', async (c) => {
     });
 
   } catch (error) {
+    console.error('Search endpoint error:', error);
     return c.json({
       success: false,
-      error: 'Internal server error'
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error'
     }, 500);
   }
 });
@@ -134,9 +140,11 @@ search.get('/suggestions', async (c) => {
       }
     });
   } catch (error) {
+    console.error('Suggestions endpoint error:', error);
     return c.json({
       success: false,
-      error: 'Internal server error'
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error'
     }, 500);
   }
 });
@@ -145,7 +153,8 @@ search.get('/suggestions', async (c) => {
 search.get('/health', async (c) => {
   try {
     const payload = c.get('jwtPayload');
-    const searchService = getSearchService(c.env);
+    const searchService = getUnifiedSearchService(c.env);
+    const engine = c.req.query('engine'); // Optional engine selection
     
     // Create cache key for health check
     const cacheKey = CacheService.createHealthCacheKey();
@@ -154,7 +163,7 @@ search.get('/health', async (c) => {
     const { data: healthCheck, fromCache } = await CacheService.withCache(
       cacheKey,
       async () => {
-        return await searchService.healthCheck();
+        return await searchService.healthCheck(engine);
       },
       'health'
     );
@@ -170,9 +179,40 @@ search.get('/health', async (c) => {
       }
     });
   } catch (error) {
+    console.error('Health check endpoint error:', error);
     return c.json({
       success: false,
-      error: 'Health check failed'
+      error: 'Health check failed',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, 500);
+  }
+});
+
+// Get available search engines
+search.get('/engines', async (c) => {
+  try {
+    const payload = c.get('jwtPayload');
+    const searchService = getUnifiedSearchService(c.env);
+    
+    const stats = searchService.getStats();
+    const engines = stats.availableEngines.map(key => 
+      searchService.getEngineInfo(key)
+    ).filter(Boolean);
+
+    return c.json({
+      success: true,
+      data: {
+        engines,
+        defaultEngine: stats.defaultEngine,
+        totalEngines: stats.totalEngines,
+        requestedBy: payload.sub,
+        requestedAt: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    return c.json({
+      success: false,
+      error: 'Failed to get engine information'
     }, 500);
   }
 });
@@ -202,19 +242,39 @@ search.get('/cache/stats', async (c) => {
 search.delete('/cache', async (c) => {
   try {
     const payload = c.get('jwtPayload');
-    const pattern = c.req.query('pattern');
+    const pattern = c.req.query('pattern') || '.*';
     
-    if (pattern) {
-      await CacheService.invalidateCache(pattern);
-    } else {
-      CacheService.clearCache();
-    }
+    await CacheService.invalidateCache(pattern);
     
     return c.json({
       success: true,
-      message: pattern ? `Cache entries matching "${pattern}" invalidated` : 'All cache entries cleared',
-      clearedBy: payload.sub,
-      clearedAt: new Date().toISOString()
+      data: {
+        message: `Cache entries matching pattern '${pattern}' have been invalidated`,
+        invalidatedBy: payload.sub,
+        invalidatedAt: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    return c.json({
+      success: false,
+      error: 'Failed to invalidate cache'
+    }, 500);
+  }
+});
+
+search.delete('/cache/clear', async (c) => {
+  try {
+    const payload = c.get('jwtPayload');
+    
+    CacheService.clearCache();
+    
+    return c.json({
+      success: true,
+      data: {
+        message: 'All cache entries have been cleared',
+        clearedBy: payload.sub,
+        clearedAt: new Date().toISOString()
+      }
     });
   } catch (error) {
     return c.json({
