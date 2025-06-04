@@ -57,23 +57,44 @@ export class CacheService {
 
   /**
    * Creates a cache-aware search key for search requests
+   * Uses different caching strategies based on search engine capabilities
    */
   static createSearchCacheKey(
     request: SearchRequest & { engine?: string }, 
     userId?: string
   ): string {
-    return this.generateCacheKey({
-      prefix: 'search',
-      params: {
-        query: request.query.toLowerCase().trim(),
-        orientation: request.orientation || 'any',
-        count: request.count || 10,
-        start: request.start || 1,
-        engine: request.engine || 'default',
-        // Include user ID for personalized caching if needed
-        ...(userId && { userId })
-      }
-    });
+    const engine = request.engine || 'default';
+    
+    // Different caching strategies for different engines
+    if (engine === 'serper') {
+      // Serper: Cache by query+orientation only (ignores pagination)
+      // This allows sharing cached results across multiple pages
+      return this.generateCacheKey({
+        prefix: 'search',
+        params: {
+          query: request.query.toLowerCase().trim(),
+          orientation: request.orientation || 'any',
+          engine: 'serper',
+          // Note: Deliberately excluding count and start for Serper
+          // This enables efficient pagination from a single cached result set
+          ...(userId && { userId })
+        }
+      });
+    } else {
+      // Google/Mock: Cache by all parameters (traditional pagination)
+      // Each page is cached separately due to API limitations
+      return this.generateCacheKey({
+        prefix: 'search',
+        params: {
+          query: request.query.toLowerCase().trim(),
+          orientation: request.orientation || 'any',
+          count: request.count || 10,
+          start: request.start || 1,
+          engine: engine,
+          ...(userId && { userId })
+        }
+      });
+    }
   }
 
   /**

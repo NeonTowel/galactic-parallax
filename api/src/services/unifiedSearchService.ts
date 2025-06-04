@@ -7,10 +7,12 @@ import {
 } from '../types';
 import { GoogleSearchEngine } from './googleSearchEngine';
 import { MockSearchEngine } from './mockSearchEngine';
+import { SerperSearchEngine } from './serperSearchEngine';
+import { SEARCH_ENGINE_CONFIG } from '../config/searchEngines';
 
 export class UnifiedSearchService {
   private searchEngines: Map<string, SearchEngine> = new Map();
-  private defaultEngine: string = 'google';
+  private defaultEngine: string = SEARCH_ENGINE_CONFIG.DEFAULT_ENGINE;
 
   constructor(env: Bindings) {
     // Initialize Google Search Engine if credentials are available
@@ -19,19 +21,39 @@ export class UnifiedSearchService {
         env.GOOGLE_SEARCH_API_KEY, 
         env.GOOGLE_SEARCH_ENGINE_ID
       );
-      this.searchEngines.set('google', googleEngine);
-      this.defaultEngine = 'google';
+      this.searchEngines.set(SEARCH_ENGINE_CONFIG.AVAILABLE_ENGINES.GOOGLE, googleEngine);
     } else {
-      console.warn('Google Search API credentials not found, using mock search engine as fallback');
+      console.warn('Google Search API credentials not found');
+    }
+
+    // Initialize Serper Search Engine if API key is available
+    if (env.SERPER_API_KEY) {
+      const serperEngine = new SerperSearchEngine(env.SERPER_API_KEY);
+      this.searchEngines.set(SEARCH_ENGINE_CONFIG.AVAILABLE_ENGINES.SERPER, serperEngine);
+    } else {
+      console.warn('Serper API key not found');
     }
 
     // Always add mock search engine for testing/fallback
     const mockEngine = new MockSearchEngine();
-    this.searchEngines.set('mock', mockEngine);
+    this.searchEngines.set(SEARCH_ENGINE_CONFIG.AVAILABLE_ENGINES.MOCK, mockEngine);
 
-    // If Google is not available, use mock as default
-    if (!this.searchEngines.has('google')) {
-      this.defaultEngine = 'mock';
+    // Determine the best available default engine
+    this.setOptimalDefaultEngine();
+  }
+
+  /**
+   * Set the optimal default engine based on available credentials
+   */
+  private setOptimalDefaultEngine(): void {
+    // Priority order: Serper > Google > Mock
+    if (this.searchEngines.has(SEARCH_ENGINE_CONFIG.AVAILABLE_ENGINES.SERPER)) {
+      this.defaultEngine = SEARCH_ENGINE_CONFIG.AVAILABLE_ENGINES.SERPER;
+    } else if (this.searchEngines.has(SEARCH_ENGINE_CONFIG.AVAILABLE_ENGINES.GOOGLE)) {
+      this.defaultEngine = SEARCH_ENGINE_CONFIG.AVAILABLE_ENGINES.GOOGLE;
+    } else {
+      this.defaultEngine = SEARCH_ENGINE_CONFIG.AVAILABLE_ENGINES.MOCK;
+      console.warn('No external search engines available, using mock search engine as fallback');
     }
   }
 

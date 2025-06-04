@@ -4,6 +4,7 @@ export interface Bindings {
   JWT_SECRET?: string;
   GOOGLE_SEARCH_API_KEY: string;
   GOOGLE_SEARCH_ENGINE_ID: string;
+  SERPER_API_KEY?: string;
 }
 
 export interface JWTPayload {

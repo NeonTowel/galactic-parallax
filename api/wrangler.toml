@@ -15,3 +15,8 @@ AUTH0_AUDIENCE = "https://parallax.apis.neontowel.dev"
 # wrangler secret put GOOGLE_SEARCH_ENGINE_ID
 # GOOGLE_SEARCH_API_KEY = "your-api-key-here"
 # GOOGLE_SEARCH_ENGINE_ID = "your-search-engine-id-here"
+
+# Serper API Configuration
+# These should be set as secrets in production:
+# wrangler secret put SERPER_API_KEY
+# SERPER_API_KEY = "your-api-key-here"

@@ -1,9 +1,10 @@
 # Galactic Parallax API
 
-A Hono.js-based API running on Cloudflare Workers that provides high-quality wallpaper search functionality using Google Custom Search API.
+A Hono.js-based API running on Cloudflare Workers that provides high-quality wallpaper search functionality with support for multiple search engines.
 
 ## Features
 
+- **Multiple Search Engines**: Support for Google Custom Search API, Serper Images Search, and mock search
 - **High-Quality Image Search**: Optimized for 2K+ wallpapers
 - **Orientation Support**: Landscape and portrait wallpaper filtering
 - **Smart Query Crafting**: Automatically enhances user queries for better results
@@ -11,6 +12,7 @@ A Hono.js-based API running on Cloudflare Workers that provides high-quality wal
 - **Modular Architecture**: Well-structured, maintainable codebase
 - **Secure by Design**: Fully authenticated API with user context tracking
 - **Intelligent Caching**: In-memory caching to reduce API calls and improve performance
+- **Engine Flexibility**: Easy switching between search engines via configuration
 
 ## Caching System
 
@@ -112,12 +114,28 @@ Search for high-quality wallpapers.
 - `orientation` (optional): `landscape` or `portrait`
 - `count` (optional): Number of results (1-10, default: 10)
 - `start` (optional): Starting index for pagination (default: 1)
+- `engine` (optional): Search engine to use (`google`, `serper`, `mock`)
 
 **Example:**
 
 ```bash
 curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
-  "https://parallax.apis.neontowel.dev/api/search/images?q=mountain%20sunset&orientation=landscape&count=5"
+  "https://parallax.apis.neontowel.dev/api/search/images?q=mountain%20sunset&orientation=landscape&count=5&engine=serper"
+```
+
+#### `GET /api/search/engines`
+
+Get information about available search engines.
+
+**Headers:**
+
+- `Authorization: Bearer <jwt_token>` (required)
+
+**Example:**
+
+```bash
+curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  "https://parallax.apis.neontowel.dev/api/search/engines"
 ```
 
 #### `GET /api/search/suggestions`
@@ -147,16 +165,24 @@ Check the health of the search service.
 
 - `Authorization: Bearer <jwt_token>` (required)
 
+**Query Parameters:**
+
+- `engine` (optional): Check specific engine health (`google`, `serper`, `mock`)
+
 **Example:**
 
 ```bash
 curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
-  "https://parallax.apis.neontowel.dev/api/search/health"
+  "https://parallax.apis.neontowel.dev/api/search/health?engine=serper"
 ```
 
 ## Setup
 
-### 1. Google Custom Search API Setup
+### 1. Search Engine Configuration
+
+This API supports multiple search engines. See [SEARCH_ENGINES.md](./SEARCH_ENGINES.md) for detailed configuration instructions.
+
+#### Google Custom Search API Setup
 
 1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project or select an existing one
@@ -166,18 +192,29 @@ curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
 6. Configure your search engine to search the entire web
 7. Note your Search Engine ID
 
+#### Serper Images Search Setup
+
+1. Sign up at [Serper.dev](https://serper.dev/)
+2. Get your API key from the dashboard
+3. Set the `SERPER_API_KEY` environment variable
+
 ### 2. Environment Variables
 
 Set the following secrets using Wrangler:
 
 ```bash
-# Set your Google API credentials
+# Google API credentials (optional)
 wrangler secret put GOOGLE_SEARCH_API_KEY
 wrangler secret put GOOGLE_SEARCH_ENGINE_ID
+
+# Serper API credentials (optional)
+wrangler secret put SERPER_API_KEY
 
 # Auth0 configuration (already set)
 # AUTH0_DOMAIN and AUTH0_AUDIENCE are in wrangler.toml
 ```
+
+**Note**: At least one search engine should be configured. If none are configured, the API will fall back to mock search for testing.
 
 ### 3. Development
 

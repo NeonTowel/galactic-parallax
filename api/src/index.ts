@@ -32,6 +32,19 @@ function validateEnvironment(env: Bindings): { isValid: boolean; errors: string[
     warnings.push('GOOGLE_SEARCH_ENGINE_ID is not configured - Google Search will not be available');
   }
   
+  // Serper API configuration (warn if missing, don't fail)
+  if (!env.SERPER_API_KEY) {
+    warnings.push('SERPER_API_KEY is not configured - Serper Images Search will not be available');
+  }
+  
+  // Check if at least one search engine is configured
+  const hasGoogleConfig = env.GOOGLE_SEARCH_API_KEY && env.GOOGLE_SEARCH_ENGINE_ID;
+  const hasSerperConfig = env.SERPER_API_KEY;
+  
+  if (!hasGoogleConfig && !hasSerperConfig) {
+    warnings.push('No external search engines configured - only mock search will be available');
+  }
+  
   // Validate Auth0 domain format
   if (env.AUTH0_DOMAIN && !env.AUTH0_DOMAIN.includes('.auth0.com')) {
     errors.push('AUTH0_DOMAIN must be a valid Auth0 domain (e.g., your-tenant.auth0.com)');
@@ -130,7 +143,15 @@ app.get('/api/health', (c) => {
         configured: !!(c.env.GOOGLE_SEARCH_API_KEY && c.env.GOOGLE_SEARCH_ENGINE_ID),
         hasApiKey: !!c.env.GOOGLE_SEARCH_API_KEY,
         hasSearchEngineId: !!c.env.GOOGLE_SEARCH_ENGINE_ID,
-        status: (c.env.GOOGLE_SEARCH_API_KEY && c.env.GOOGLE_SEARCH_ENGINE_ID) ? 'available' : 'fallback to mock'
+        status: (c.env.GOOGLE_SEARCH_API_KEY && c.env.GOOGLE_SEARCH_ENGINE_ID) ? 'available' : 'not configured'
+      },
+      serperSearch: {
+        configured: !!c.env.SERPER_API_KEY,
+        hasApiKey: !!c.env.SERPER_API_KEY,
+        status: c.env.SERPER_API_KEY ? 'available' : 'not configured'
+      },
+      fallback: {
+        mockSearch: 'always available'
       }
     },
     warnings: validation.warnings
