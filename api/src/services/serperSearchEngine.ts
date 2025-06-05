@@ -6,6 +6,13 @@ import {
   IntermediaryPaginationInfo,
   ApiResponse 
 } from '../types';
+import { 
+  craftWallpaperQuery, 
+  isValidImageUrl, 
+  getMimeTypeFromUrl, 
+  getFileFormatFromUrl 
+} from './queryUtils';
+import { SEARCH_ENGINE_CONFIG } from '../config/searchEngines';
 
 interface SerperImageResult {
   title: string;
@@ -45,6 +52,7 @@ interface SerperCachedResults {
 
 export class SerperSearchEngine implements SearchEngine {
   name = 'Serper Images Search';
+  supportsTbs = SEARCH_ENGINE_CONFIG.TBS_SUPPORT.SERPER;
   private apiKey: string;
   private baseUrl = 'https://google.serper.dev/images';
   
@@ -132,14 +140,41 @@ export class SerperSearchEngine implements SearchEngine {
   private async fetchFromSerperAPI(request: SearchRequest): Promise<SerperCachedResults> {
     const startTime = Date.now();
     
+    const queryResult = craftWallpaperQuery(request.query, {
+      orientation: request.orientation,
+      includeQualityTerms: !this.supportsTbs, // Use manual terms only if TBS not supported
+      includeOrientationTerms: !this.supportsTbs, // Use manual terms only if TBS not supported
+      useTbsParameters: this.supportsTbs
+    });
+    
     const searchParams = new URLSearchParams({
-      q: request.query,
+      q: queryResult.query,
       num: '100', // Always fetch maximum for caching
       autocorrect: 'false',
       apiKey: this.apiKey
     });
 
-    const response = await fetch(`${this.baseUrl}?${searchParams}`, {
+    // Add TBS parameters if supported and available
+    const tbsParam = request.tbs || queryResult.tbs;
+    if (this.supportsTbs && tbsParam) {
+      searchParams.set('tbs', tbsParam);
+    }
+
+    const searchUrl = `${this.baseUrl}?${searchParams}`;
+
+    // Debug logging
+    console.log('🔍 [SEARCH DEBUG]', {
+      engine: this.name,
+      originalQuery: request.query,
+      finalQuery: queryResult.query,
+      tbsParameters: tbsParam || 'none',
+      orientation: request.orientation || 'any',
+      supportsTbs: this.supportsTbs,
+      searchUrl: searchUrl.replace(this.apiKey, '[API_KEY_HIDDEN]'),
+      timestamp: new Date().toISOString()
+    });
+
+    const response = await fetch(searchUrl, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json'
@@ -147,14 +182,23 @@ export class SerperSearchEngine implements SearchEngine {
     });
 
     if (!response.ok) {
+      console.error('❌ [SEARCH ERROR]', {
+        engine: this.name,
+        status: response.status,
+        error: response.statusText
+      });
       throw new Error(`Serper API error: ${response.status} ${response.statusText}`);
     }
 
     const data: SerperSearchResponse = await response.json();
     const searchTime = Date.now() - startTime;
 
-    // Apply orientation filtering
+    // Apply orientation filtering and URL validation
     const filteredResults = (data.images || []).filter(item => {
+      // Skip results with invalid URLs
+      if (!isValidImageUrl(item.imageUrl)) return false;
+      if (!isValidImageUrl(item.thumbnailUrl)) return false;
+      
       if (!request.orientation) return true;
       const isLandscape = item.imageWidth > item.imageHeight;
       return request.orientation === 'landscape' ? isLandscape : !isLandscape;
@@ -171,8 +215,8 @@ export class SerperSearchEngine implements SearchEngine {
       description: item.source || item.domain,
       width: item.imageWidth,
       height: item.imageHeight,
-      mimeType: this.getMimeTypeFromUrl(item.imageUrl),
-      fileFormat: this.getFileFormatFromUrl(item.imageUrl)
+      mimeType: getMimeTypeFromUrl(item.imageUrl),
+      fileFormat: getFileFormatFromUrl(item.imageUrl)
     }));
 
     return {
@@ -208,6 +252,11 @@ export class SerperSearchEngine implements SearchEngine {
 
       // Handle empty results
       if (cachedResults.totalResults === 0) {
+        console.log('⚠️ [SEARCH WARNING]', {
+          engine: this.name,
+          message: 'No results found',
+          query: request.query
+        });
         return {
           success: true,
           data: {
@@ -259,6 +308,14 @@ export class SerperSearchEngine implements SearchEngine {
         previousStartIndex: currentPage > 1 ? Math.max(1, startIndex - requestedCount) : undefined
       };
 
+      console.log('✅ [SEARCH SUCCESS]', {
+        engine: this.name,
+        resultsFound: results.length,
+        totalResults: cachedResults.totalResults,
+        searchTime: `${cachedResults.searchTime}ms`,
+        cached: true
+      });
+
       return {
         success: true,
         data: {
@@ -275,6 +332,11 @@ export class SerperSearchEngine implements SearchEngine {
       };
 
     } catch (error) {
+      console.error('💥 [SEARCH EXCEPTION]', {
+        engine: this.name,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      });
       return {
         success: false,
         error: `Serper search failed: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -311,21 +373,10 @@ export class SerperSearchEngine implements SearchEngine {
   }
 
   private getMimeTypeFromUrl(url: string): string {
-    const extension = url.split('.').pop()?.toLowerCase();
-    const mimeTypes: Record<string, string> = {
-      'jpg': 'image/jpeg',
-      'jpeg': 'image/jpeg',
-      'png': 'image/png',
-      'gif': 'image/gif',
-      'webp': 'image/webp',
-      'svg': 'image/svg+xml',
-      'bmp': 'image/bmp'
-    };
-    return mimeTypes[extension || ''] || 'image/jpeg';
+    return getMimeTypeFromUrl(url);
   }
 
   private getFileFormatFromUrl(url: string): string {
-    const extension = url.split('.').pop()?.toLowerCase();
-    return extension?.toUpperCase() || 'JPEG';
+    return getFileFormatFromUrl(url);
   }
 } 

@@ -1,6 +1,6 @@
 name = "galactic-parallax-api"
 main = "src/index.ts"
-compatibility_date = "2025-05-29"
+compatibility_date = "2025-05-25"
 workers_dev = false
 
 routes = [{ pattern = "parallax.apis.neontowel.dev", custom_domain = true }]
@@ -20,3 +20,8 @@ AUTH0_AUDIENCE = "https://parallax.apis.neontowel.dev"
 # These should be set as secrets in production:
 # wrangler secret put SERPER_API_KEY
 # SERPER_API_KEY = "your-api-key-here"
+
+# Zenserp API Configuration
+# These should be set as secrets in production:
+# wrangler secret put ZENSERP_API_KEY
+# ZENSERP_API_KEY = "your-api-key-here"

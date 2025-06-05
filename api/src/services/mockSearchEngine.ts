@@ -6,9 +6,11 @@ import {
   IntermediaryPaginationInfo,
   ApiResponse 
 } from '../types';
+import { SEARCH_ENGINE_CONFIG } from '../config/searchEngines';
 
 export class MockSearchEngine implements SearchEngine {
   public readonly name = 'Mock Search Engine';
+  public readonly supportsTbs = SEARCH_ENGINE_CONFIG.TBS_SUPPORT.MOCK;
 
   /**
    * Validates search request parameters

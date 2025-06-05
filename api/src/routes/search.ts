@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { UnifiedSearchService } from '../services/unifiedSearchService';
 import { CacheService } from '../services/cacheService';
 import { SearchRequest, Bindings, JWTPayload } from '../types';
+import { debugLog } from '../services/queryUtils';
 
 const search = new Hono<{ 
   Bindings: Bindings;
@@ -27,8 +28,27 @@ search.get('/images', async (c) => {
     const count = c.req.query('count') ? parseInt(c.req.query('count')!) : undefined;
     const start = c.req.query('start') ? parseInt(c.req.query('start')!) : undefined;
     const engine = c.req.query('engine'); // Optional engine selection
+    const tbs = c.req.query('tbs'); // Optional TBS parameters for Google search
+
+    // Debug logging for incoming request
+    debugLog('LOG_REQUESTS', '📥 [SEARCH REQUEST]', {
+      user: payload.sub,
+      query,
+      orientation,
+      count,
+      start,
+      engine,
+      tbs,
+      timestamp: new Date().toISOString(),
+      userAgent: c.req.header('User-Agent'),
+      ip: c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For')
+    });
 
     if (!query) {
+      debugLog('LOG_REQUESTS', '⚠️ [REQUEST ERROR]', {
+        user: payload.sub,
+        error: 'Missing query parameter'
+      });
       return c.json({
         success: false,
         error: 'Query parameter "q" or "query" is required'
@@ -39,7 +59,8 @@ search.get('/images', async (c) => {
       query,
       orientation,
       count,
-      start
+      start,
+      tbs
     };
 
     // Create cache key for this search request (include engine in cache key)
@@ -58,8 +79,25 @@ search.get('/images', async (c) => {
     );
 
     if (!result.success) {
+      debugLog('LOG_RESPONSES', '❌ [SEARCH FAILED]', {
+        user: payload.sub,
+        query,
+        engine,
+        error: result.error
+      });
       return c.json(result, 400);
     }
+
+    // Debug logging for successful response
+    debugLog('LOG_RESPONSES', '📤 [SEARCH RESPONSE]', {
+      user: payload.sub,
+      query,
+      engine: result.data?.searchInfo?.searchEngine,
+      resultsCount: result.data?.results?.length,
+      totalResults: result.data?.pagination?.totalResults,
+      cached: fromCache,
+      searchTime: result.data?.searchInfo?.searchTime
+    });
 
     // Add user context and cache info to response
     return c.json({
@@ -71,7 +109,11 @@ search.get('/images', async (c) => {
     });
 
   } catch (error) {
-    console.error('Search endpoint error:', error);
+    debugLog('LOG_RESPONSES', '💥 [ROUTE EXCEPTION]', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      timestamp: new Date().toISOString()
+    });
     return c.json({
       success: false,
       error: 'Internal server error',

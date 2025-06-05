@@ -3,8 +3,8 @@
 
 @baseUrl = http://localhost:8787
 
-#@jwtToken = "..."
-@jwtToken = YOUR_JWT_TOKEN_HERE
+@jwtToken = ""
+#@jwtToken = YOUR_JWT_TOKEN_HERE
 
 ### Test Root Endpoint
 GET {{baseUrl}}/
@@ -60,4 +60,20 @@ Authorization: Bearer {{jwtToken}}
 
 ### Test Complex Search Query
 GET {{baseUrl}}/api/search/images?q=space galaxy nebula&orientation=landscape&count=5&start=1
+Authorization: Bearer {{jwtToken}}
+
+### Test Zenserp Engine Specifically
+GET {{baseUrl}}/api/search/images?q=mountain landscape&orientation=landscape&count=10&engine=zenserp
+Authorization: Bearer {{jwtToken}}
+
+### Test Zenserp Engine - Portrait
+GET {{baseUrl}}/api/search/images?q=city skyline&orientation=portrait&count=5&engine=zenserp
+Authorization: Bearer {{jwtToken}}
+
+### Test Zenserp Engine - Large Result Set
+GET {{baseUrl}}/api/search/images?q=nature&count=50&engine=zenserp
+Authorization: Bearer {{jwtToken}}
+
+### Test Zenserp Engine - Pagination
+GET {{baseUrl}}/api/search/images?q=ocean waves&count=10&start=11&engine=zenserp
 Authorization: Bearer {{jwtToken}} 

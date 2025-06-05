@@ -5,6 +5,7 @@ export interface Bindings {
   GOOGLE_SEARCH_API_KEY: string;
   GOOGLE_SEARCH_ENGINE_ID: string;
   SERPER_API_KEY?: string;
+  ZENSERP_API_KEY?: string;
 }
 
 export interface JWTPayload {
@@ -18,6 +19,7 @@ export interface SearchRequest {
   orientation?: 'landscape' | 'portrait';
   count?: number;
   start?: number;
+  tbs?: string;
 }
 
 // Intermediary Search Schema - Common interface for all search engines
@@ -62,6 +64,7 @@ export interface IntermediarySearchResponse {
 // Abstract Search Engine Interface
 export interface SearchEngine {
   name: string;
+  supportsTbs: boolean;
   search(request: SearchRequest): Promise<ApiResponse<IntermediarySearchResponse>>;
   healthCheck(): Promise<{ healthy: boolean; message: string }>;
 }

@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { jwk } from 'hono/jwk';
+import { jwtVerify, createRemoteJWKSet } from 'jose';
 import { search } from './routes/search';
 import { Bindings, JWTPayload } from './types';
 
@@ -98,10 +98,48 @@ app.options('*', (c) => {
 // JWT middleware for protected routes with enhanced error handling
 app.use('/api/search/*', async (c, next) => {
   try {
-    const jwkMiddleware = jwk({
-      jwks_uri: `https://${c.env.AUTH0_DOMAIN}/.well-known/jwks.json`,
+    // Get the Authorization header
+    const authHeader = c.req.header('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return c.json({
+        success: false,
+        error: 'Unauthorized',
+        message: 'Missing or invalid Authorization header'
+      }, 401);
+    }
+
+    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+    
+    // Ensure AUTH0_DOMAIN has proper protocol
+    const auth0Domain = c.env.AUTH0_DOMAIN.startsWith('https://') 
+      ? c.env.AUTH0_DOMAIN 
+      : `https://${c.env.AUTH0_DOMAIN}`;
+    
+    // Ensure trailing slash for issuer validation (Auth0 always includes it)
+    const issuerDomain = auth0Domain.endsWith('/') ? auth0Domain : `${auth0Domain}/`;
+
+    console.log('JWT middleware - Auth0 domain:', auth0Domain);
+    console.log('JWT middleware - Audience:', c.env.AUTH0_AUDIENCE);
+    
+    // Create JWKS endpoint URL
+    const jwksUri = `${auth0Domain}/.well-known/jwks.json`;
+    console.log('JWKS URI:', jwksUri);
+    
+    // Create remote JWK Set
+    const JWKS = createRemoteJWKSet(new URL(jwksUri));
+    
+    // Verify the JWT token
+    const { payload } = await jwtVerify(token, JWKS, {
+      audience: c.env.AUTH0_AUDIENCE,
+      issuer: issuerDomain,
     });
-    return jwkMiddleware(c, next);
+    
+    console.log('JWT verified successfully, payload:', payload);
+    
+    // Store the payload in context for use in routes
+    c.set('jwtPayload', payload as JWTPayload);
+    
+    await next();
   } catch (error) {
     console.error('JWT middleware error:', error);
     return c.json({
@@ -109,7 +147,7 @@ app.use('/api/search/*', async (c, next) => {
       error: 'Authentication service error',
       message: 'Unable to validate JWT token. Please check your Auth0 configuration.',
       details: error instanceof Error ? error.message : 'Unknown error'
-    }, 500);
+    }, 401);
   }
 });
 
