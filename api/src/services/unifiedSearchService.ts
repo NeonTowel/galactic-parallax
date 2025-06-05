@@ -9,6 +9,7 @@ import { GoogleSearchEngine } from './googleSearchEngine';
 import { MockSearchEngine } from './mockSearchEngine';
 import { SerperSearchEngine } from './serperSearchEngine';
 import { ZenserpSearchEngine } from './zenserpSearchEngine';
+import { BraveSearchEngine } from './braveSearchEngine';
 import { SEARCH_ENGINE_CONFIG } from '../config/searchEngines';
 import { debugLog } from './queryUtils';
 
@@ -17,7 +18,15 @@ export class UnifiedSearchService {
   private defaultEngine: string = SEARCH_ENGINE_CONFIG.DEFAULT_ENGINE;
 
   constructor(env: Bindings) {
-    // Initialize Zenserp Search Engine if API key is available (highest priority)
+    // Initialize Brave Search Engine if API key is available (highest priority)
+    if (env.BRAVE_SEARCH_API_KEY) {
+      const braveEngine = new BraveSearchEngine(env.BRAVE_SEARCH_API_KEY);
+      this.searchEngines.set(SEARCH_ENGINE_CONFIG.AVAILABLE_ENGINES.BRAVE, braveEngine);
+    } else {
+      console.warn('Brave Search API key not found');
+    }
+
+    // Initialize Zenserp Search Engine if API key is available
     if (env.ZENSERP_API_KEY) {
       const zenserpEngine = new ZenserpSearchEngine(env.ZENSERP_API_KEY);
       this.searchEngines.set(SEARCH_ENGINE_CONFIG.AVAILABLE_ENGINES.ZENSERP, zenserpEngine);

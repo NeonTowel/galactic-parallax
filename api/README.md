@@ -4,7 +4,7 @@ A Hono.js-based API running on Cloudflare Workers that provides high-quality wal
 
 ## Features
 
-- **Multiple Search Engines**: Support for Zenserp Images Search, Serper Images Search, Google Custom Search API, and mock search
+- **Multiple Search Engines**: Support for Brave Search API, Zenserp Images Search, Serper Images Search, Google Custom Search API, and mock search
 - **High-Quality Image Search**: Optimized for 2K+ wallpapers with universal query enhancement
 - **Orientation Support**: Landscape and portrait wallpaper filtering
 - **Smart Query Crafting**: Automatically enhances user queries for better results across all engines
@@ -113,10 +113,10 @@ Search for high-quality wallpapers.
 
 - `q` or `query` (required): Search query
 - `orientation` (optional): `landscape` or `portrait`
-- `count` (optional): Number of results (1-100 for Zenserp/Serper, 1-10 for Google, default: 10)
+- `count` (optional): Number of results (1-100 for Brave/Zenserp/Serper, 1-10 for Google, default: 10)
 - `start` (optional): Starting index for pagination (default: 1)
-- `engine` (optional): Search engine to use (`zenserp`, `serper`, `google`, `mock`)
-- `tbs` (optional): TBS parameters for advanced image search optimization (supported by Google, Serper, and Zenserp engines)
+- `engine` (optional): Search engine to use (`brave`, `zenserp`, `serper`, `google`, `mock`)
+- `tbs` (optional): TBS parameters for advanced image search optimization (supported by Google, Serper, and Zenserp engines; Brave uses native search operators)
 
 **TBS Parameter Examples:**
 
@@ -137,12 +137,16 @@ The `tbs` parameter allows fine-grained control over image search results across
 - **Color**: `ic:color`, `ic:gray`, `ic:mono`, `ic:specific,isc:blue`
 - **Time**: `qdr:d` (day), `qdr:w` (week), `qdr:m` (month), `qdr:y` (year)
 
-**Note**: TBS parameters are automatically generated based on orientation when not explicitly provided. Custom `tbs` parameters override the default quality optimization keywords for engines that support them (Google, Serper, Zenserp).
+**Note**: TBS parameters are automatically generated based on orientation when not explicitly provided. Custom `tbs` parameters override the default quality optimization keywords for engines that support them (Google, Serper, Zenserp). Brave Search uses native search operators instead of TBS parameters and doesn't provide image dimensions in the response (returns 0x0 for width/height).
 
 **Example:**
 
 ```bash
-# Basic search
+# Basic search with Brave Search (recommended)
+curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  "https://parallax.apis.neontowel.dev/api/search/images?q=mountain%20sunset&orientation=landscape&count=50&engine=brave"
+
+# Basic search with Zenserp
 curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   "https://parallax.apis.neontowel.dev/api/search/images?q=mountain%20sunset&orientation=landscape&count=50&engine=zenserp"
 
@@ -195,7 +199,7 @@ Check the health of the search service.
 
 **Query Parameters:**
 
-- `engine` (optional): Check specific engine health (`zenserp`, `serper`, `google`, `mock`)
+- `engine` (optional): Check specific engine health (`brave`, `zenserp`, `serper`, `google`, `mock`)
 
 **Example:**
 
@@ -208,9 +212,18 @@ curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
 
 ### 1. Search Engine Configuration
 
-This API supports multiple search engines with Zenserp as the default. See [SEARCH_ENGINES.md](./SEARCH_ENGINES.md) for detailed configuration instructions.
+This API supports multiple search engines with Brave Search as the highest priority. See [engine-config-examples.md](./engine-config-examples.md) for detailed configuration instructions.
 
-#### Zenserp Images Search Setup (Recommended)
+#### Brave Search API Setup (Recommended)
+
+1. Sign up at [Brave Search API](https://api.search.brave.com/)
+2. Get your API key from the dashboard
+3. Set the `BRAVE_SEARCH_API_KEY` environment variable
+
+**API Documentation**: [Brave Image Search API](https://api-dashboard.search.brave.com/app/documentation/image-search/query)  
+**Search Operators**: Uses [Brave's native search operators](https://search.brave.com/help/operators) for optimal wallpaper filtering
+
+#### Zenserp Images Search Setup
 
 1. Sign up at [Zenserp.com](https://zenserp.com/)
 2. Get your API key from the dashboard
@@ -237,13 +250,16 @@ This API supports multiple search engines with Zenserp as the default. See [SEAR
 Set the following secrets using Wrangler:
 
 ```bash
-# Zenserp API credentials (recommended - highest priority)
+# Brave Search API credentials (recommended - highest priority)
+wrangler secret put BRAVE_SEARCH_API_KEY
+
+# Zenserp API credentials (optional - second priority)
 wrangler secret put ZENSERP_API_KEY
 
-# Serper API credentials (optional - second priority)
+# Serper API credentials (optional - third priority)
 wrangler secret put SERPER_API_KEY
 
-# Google API credentials (optional - third priority)
+# Google API credentials (optional - fourth priority)
 wrangler secret put GOOGLE_SEARCH_API_KEY
 wrangler secret put GOOGLE_SEARCH_ENGINE_ID
 
@@ -251,7 +267,7 @@ wrangler secret put GOOGLE_SEARCH_ENGINE_ID
 # AUTH0_DOMAIN and AUTH0_AUDIENCE are in wrangler.toml
 ```
 
-**Note**: At least one search engine should be configured. The system will automatically select the best available engine in this priority order: Zenserp > Serper > Google > Mock.
+**Note**: At least one search engine should be configured. The system will automatically select the best available engine in this priority order: Brave > Zenserp > Serper > Google > Mock.
 
 ### 3. Development
 
@@ -290,6 +306,7 @@ TBS_SUPPORT: {
   ZENSERP: true,  // Zenserp supports TBS parameters
   SERPER: true,   // Serper supports TBS parameters
   GOOGLE: true,   // Google supports TBS parameters
+  BRAVE: false,   // Brave uses native search operators instead of TBS
   MOCK: false     // Mock engine doesn't need TBS support
 }
 ```

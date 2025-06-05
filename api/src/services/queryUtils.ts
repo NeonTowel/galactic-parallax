@@ -143,11 +143,17 @@ export function isValidImageUrl(url: string): boolean {
     // Should have a reasonable length
     if (url.length > 2000) return false;
     
-    // Should contain common image file extensions or be from known image services
+    // Check for common image file extensions
     const hasImageExtension = /\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?|$)/i.test(url);
-    const isKnownImageService = /\b(gstatic|imgur|unsplash|pexels|pixabay|flickr)\b/i.test(url);
     
-    return hasImageExtension || isKnownImageService;
+    // Expanded list of known image services including Brave's proxy and common CDNs
+    const isKnownImageService = /\b(gstatic|imgur|unsplash|pexels|pixabay|flickr|imgs\.search\.brave|static\.vecteezy|img\.freepik|thumbs\.dreamstime|media\.istockphoto|cdn\.vectorstock|static\.greatbigcanvas|ftcdn\.net|create\.vista|icanvas)\b/i.test(url);
+    
+    // For Brave Search, be more permissive since their proxy URLs don't always have clear extensions
+    const isBraveProxy = url.includes('imgs.search.brave.com');
+    
+    // Accept if it has image extension, is from known service, or is Brave proxy
+    return hasImageExtension || isKnownImageService || isBraveProxy;
   } catch {
     return false;
   }
@@ -216,6 +222,29 @@ export function craftMinimalWallpaperQuery(
   };
 
   return result;
+}
+
+/**
+ * Crafts a search query optimized for Brave Search using native operators
+ * Brave Search supports advanced operators that can replace TBS functionality
+ */
+export function craftBraveWallpaperQuery(
+  userQuery: string, 
+  options: QueryCraftingOptions = {}
+): string {
+  const { orientation, engine } = options;
+  
+  // Start with user query and add quality terms using OR operator
+  let query = `${userQuery} (wallpaper OR background OR "high resolution" OR 4K OR UHD OR 2K)`;
+  
+  // Add orientation-specific terms using OR grouping
+  if (orientation === 'portrait') {
+    query += ' (mobile OR vertical OR portrait OR "phone wallpaper")';
+  } else if (orientation === 'landscape') {
+    query += ' (desktop OR widescreen OR landscape OR "desktop wallpaper")';
+  }
+
+  return query;
 }
 
 /**

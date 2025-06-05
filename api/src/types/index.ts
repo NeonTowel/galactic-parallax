@@ -6,6 +6,7 @@ export interface Bindings {
   GOOGLE_SEARCH_ENGINE_ID: string;
   SERPER_API_KEY?: string;
   ZENSERP_API_KEY?: string;
+  BRAVE_SEARCH_API_KEY?: string;
 }
 
 export interface JWTPayload {
@@ -122,4 +123,42 @@ export interface ApiResponse<T = any> {
   data?: T;
   error?: string;
   message?: string;
+}
+
+// Brave Search API specific types
+export interface BraveSearchResponse {
+  type: string;
+  query: {
+    original: string;
+    spellcheck_off?: boolean;
+    show_strict_warning?: boolean;
+    altered?: string;
+  };
+  results: BraveImageResult[];
+  extra?: {
+    might_be_offensive?: boolean;
+  };
+}
+
+export interface BraveImageResult {
+  type: string;
+  title: string;
+  url: string;
+  source: string;
+  page_fetched?: string;
+  thumbnail: {
+    src: string;
+  };
+  properties: {
+    url: string;
+    placeholder?: string;
+  };
+  meta_url?: {
+    scheme: string;
+    netloc: string;
+    hostname: string;
+    favicon?: string;
+    path?: string;
+  };
+  confidence?: string;
 } 
