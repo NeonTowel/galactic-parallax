@@ -11,53 +11,28 @@ import {
 import { debugLog, isValidImageUrl, getMimeTypeFromUrl, getFileFormatFromUrl, craftBraveWallpaperQuery } from './queryUtils';
 import { SEARCH_ENGINE_CONFIG } from '../config/searchEngines';
 
+// Interface for caching raw Brave results
+interface BraveCachedResults {
+  allResults: IntermediarySearchResult[];
+  totalResults: number;
+  query: string;
+  orientation?: 'landscape' | 'portrait';
+  fetchedAt: string;
+  searchTime: number;
+}
+
 export class BraveSearchEngine implements SearchEngine {
   public readonly name = 'Brave Search';
   public readonly supportsTbs = SEARCH_ENGINE_CONFIG.TBS_SUPPORT.BRAVE;
   private apiKey: string;
   private baseUrl = 'https://api.search.brave.com/res/v1/images/search';
+  
+  // Simple in-memory cache for raw results (separate from main cache)
+  private static rawResultsCache = new Map<string, BraveCachedResults>();
+  private static readonly RAW_CACHE_TTL = 604800000; // 1 week in milliseconds
 
   constructor(apiKey: string) {
     this.apiKey = apiKey;
-  }
-
-  /**
-   * Builds search URL using Brave's native parameters and operators for optimal results
-   */
-  private buildSearchUrl(params: {
-    query: string;
-    orientation?: 'landscape' | 'portrait';
-    count?: number;
-    start?: number;
-    country?: string;
-    safesearch?: 'off' | 'strict';
-    search_lang?: string;
-  }): string {
-    
-    // Craft optimized query using Brave search operators
-    const optimizedQuery = craftBraveWallpaperQuery(params.query, {
-      orientation: params.orientation,
-      engine: 'brave'
-    });
-    
-    const url = new URL(this.baseUrl);
-    
-    // Required parameter
-    url.searchParams.set('q', optimizedQuery);
-    
-    // Optional parameters with proper defaults per Brave Image Search API
-    url.searchParams.set('count', String(Math.min(params.count || 50, 100))); // Default 50, max 100
-    url.searchParams.set('safesearch', params.safesearch || 'off'); // Default to strict for wallpapers
-    url.searchParams.set('spellcheck', 'false'); // Disable spellcheck (boolean as string)
-
-    // Add pagination support using offset parameter
-    if (params.start && params.start > 1) {
-      const resultsPerPage = params.count || 50;
-      const offset = Math.floor((params.start - 1) / resultsPerPage);
-      url.searchParams.set('offset', String(Math.min(offset, 9))); // Max offset is 9 per Brave API docs
-    }
-
-    return url.toString();
   }
 
   /**
@@ -73,7 +48,7 @@ export class BraveSearchEngine implements SearchEngine {
     }
 
     if (request.count && (request.count < 1 || request.count > 100)) {
-      return { isValid: false, error: 'Count must be between 1 and 100' };
+      return { isValid: false, error: 'Count must be between 1 and 100 for Brave engine' };
     }
 
     if (request.start && request.start < 1) {
@@ -88,102 +63,147 @@ export class BraveSearchEngine implements SearchEngine {
   }
 
   /**
-   * Convert Brave Image Search response to intermediary format
-   * Note: Brave Image Search API supports pagination via offset parameter
+   * Creates a cache key for raw results (query + orientation only)
    */
-  private convertToIntermediaryFormat(
-    braveResponse: BraveSearchResponse, 
-    request: SearchRequest,
-    searchTime: number
-  ): IntermediarySearchResponse {
-    const resultsPerPage = request.count || 50;
-    const currentStartIndex = request.start || 1;
-    const currentPage = Math.ceil(currentStartIndex / resultsPerPage);
+  private createRawResultsCacheKey(query: string, orientation?: 'landscape' | 'portrait'): string {
+    return `brave_raw:${query.toLowerCase().trim()}:${orientation || 'any'}`;
+  }
 
-    // Extract image results from Brave response (direct results array)
-    const imageResults = braveResponse.results || [];
+  /**
+   * Gets cached raw results if available and not expired
+   */
+  private getCachedRawResults(cacheKey: string): BraveCachedResults | null {
+    const cached = BraveSearchEngine.rawResultsCache.get(cacheKey);
+    if (!cached) return null;
+
+    const now = Date.now();
+    const age = now - new Date(cached.fetchedAt).getTime();
     
-    // Convert Brave image results to intermediary format
-    const results: IntermediarySearchResult[] = imageResults
-      .filter((item: BraveImageResult) => {
-        // Primary filter: main image URL must be valid (this is what users will download)
-        const hasValidImageUrl = isValidImageUrl(item.properties.url);
-        
-        // Secondary filter: thumbnail should exist (but can be Brave proxy without extension)
-        const hasValidThumbnail = item.thumbnail?.src && item.thumbnail.src.length > 0;
-        
-        return hasValidImageUrl && hasValidThumbnail;
-      })
-      .map((item: BraveImageResult, index: number) => {
-        // Log quality metrics for monitoring
-        debugLog('LOG_RESPONSES', '📊 [BRAVE RESULT QUALITY]', {
-          index: index + 1,
-          source: item.source,
-          confidence: item.confidence,
-          url: item.properties.url
-        });
+    if (age > BraveSearchEngine.RAW_CACHE_TTL) {
+      BraveSearchEngine.rawResultsCache.delete(cacheKey);
+      return null;
+    }
 
-        return {
-          id: `brave_${currentStartIndex + index}`,
-          title: item.title || 'Untitled',
-          url: item.properties.url,
-          thumbnailUrl: item.thumbnail.src,
-          sourceUrl: item.url,
-          sourceDomain: item.source,
-          description: item.title || '',
-          width: 0, // Brave doesn't provide dimensions
-          height: 0, // Brave doesn't provide dimensions
-          fileSize: undefined, // Brave doesn't provide file size
-          mimeType: getMimeTypeFromUrl(item.properties.url),
-          fileFormat: getFileFormatFromUrl(item.properties.url)
-        };
+    return cached;
+  }
+
+  /**
+   * Caches raw results
+   */
+  private setCachedRawResults(cacheKey: string, results: BraveCachedResults): void {
+    BraveSearchEngine.rawResultsCache.set(cacheKey, results);
+    
+    // Simple cleanup if cache gets too large
+    if (BraveSearchEngine.rawResultsCache.size > 50) {
+      const now = Date.now();
+      for (const [key, value] of BraveSearchEngine.rawResultsCache.entries()) {
+        const age = now - new Date(value.fetchedAt).getTime();
+        if (age > BraveSearchEngine.RAW_CACHE_TTL) {
+          BraveSearchEngine.rawResultsCache.delete(key);
+        }
+      }
+    }
+  }
+
+  /**
+   * Fetches fresh results from Brave API
+   */
+  private async fetchFromBraveAPI(request: SearchRequest): Promise<BraveCachedResults> {
+    const startTime = Date.now();
+    
+    // Craft optimized query using Brave search operators
+    const optimizedQuery = craftBraveWallpaperQuery(request.query, {
+      orientation: request.orientation,
+      engine: 'brave'
+    });
+    
+    const url = new URL(this.baseUrl);
+    url.searchParams.set('q', optimizedQuery);
+    url.searchParams.set('count', '100'); // Always fetch maximum for caching
+    url.searchParams.set('safesearch', 'off');
+    url.searchParams.set('spellcheck', 'false');
+
+    const searchUrl = url.toString();
+
+    // Debug logging
+    debugLog('LOG_QUERY_BUILDING', '🔍 [BRAVE SEARCH DEBUG]', {
+      engine: this.name,
+      originalQuery: request.query,
+      finalQuery: optimizedQuery,
+      orientation: request.orientation || 'any',
+      supportsTbs: this.supportsTbs,
+      searchUrl: SEARCH_ENGINE_CONFIG.DEBUG.HIDE_API_KEYS 
+        ? searchUrl.replace(this.apiKey, '[API_KEY_HIDDEN]')
+        : searchUrl,
+      timestamp: new Date().toISOString()
+    });
+
+    const response = await fetch(searchUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'Accept-Encoding': 'gzip',
+        'X-Subscription-Token': this.apiKey,
+        'User-Agent': 'Galactic-Parallax-API/1.0'
+      }
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      debugLog('LOG_API_CALLS', '❌ [BRAVE SEARCH ERROR]', {
+        engine: this.name,
+        status: response.status,
+        error: errorData.message || response.statusText
       });
+      throw new Error(`Brave API error: ${response.status} ${errorData.message || response.statusText}`);
+    }
 
-    // Calculate pagination based on Brave API limitations
-    // Brave supports up to 10 pages (offset 0-9) with max 100 results per page
-    const maxOffset = 9;
-    const maxResultsPerOffset = 100;
-    // Estimate total results: if we got a full page, assume there might be more
-    const estimatedTotalResults = results.length === resultsPerPage 
-      ? Math.min(resultsPerPage * (maxOffset + 1), 1000) // Assume max possible if full page
-      : currentStartIndex + results.length - 1; // Exact count if partial page
-    const totalPages = Math.min(Math.ceil(estimatedTotalResults / resultsPerPage), maxOffset + 1);
-    
-    // Determine if there are more pages available
-    const currentOffset = Math.floor((currentStartIndex - 1) / resultsPerPage);
-    const hasNextPage = currentOffset < maxOffset && results.length === resultsPerPage;
-    const hasPreviousPage = currentPage > 1;
+    const braveResponse: BraveSearchResponse = await response.json();
+    const searchTime = Date.now() - startTime;
 
-    const pagination: IntermediaryPaginationInfo = {
-      currentPage,
-      totalResults: estimatedTotalResults,
-      resultsPerPage,
-      totalPages,
-      hasNextPage,
-      hasPreviousPage,
-      nextStartIndex: hasNextPage ? currentStartIndex + resultsPerPage : undefined,
-      previousStartIndex: hasPreviousPage ? Math.max(1, currentStartIndex - resultsPerPage) : undefined
-    };
+    // Extract and filter image results
+    const imageResults = braveResponse.results || [];
+    const filteredResults = imageResults.filter((item: BraveImageResult) => {
+      // Skip results with invalid URLs
+      if (!isValidImageUrl(item.properties.url)) return false;
+      if (!item.thumbnail?.src || item.thumbnail.src.length === 0) return false;
+      
+      if (!request.orientation) return true;
+      // Note: Brave doesn't provide dimensions, so we can't filter by orientation here
+      // The orientation filtering is handled by the query optimization
+      return true;
+    });
+
+    // Convert to intermediary format
+    const allResults: IntermediarySearchResult[] = filteredResults.map((item, index) => ({
+      id: `brave_${index + 1}`,
+      title: item.title || 'Untitled',
+      url: item.properties.url,
+      thumbnailUrl: item.thumbnail.src,
+      sourceUrl: item.url,
+      sourceDomain: item.source,
+      description: item.title || '',
+      width: 0, // Brave doesn't provide dimensions
+      height: 0, // Brave doesn't provide dimensions
+      fileSize: undefined, // Brave doesn't provide file size
+      mimeType: getMimeTypeFromUrl(item.properties.url),
+      fileFormat: getFileFormatFromUrl(item.properties.url)
+    }));
 
     return {
-      results,
-      pagination,
-      searchInfo: {
-        query: request.query,
-        orientation: request.orientation,
-        searchTime,
-        searchEngine: this.name,
-        timestamp: new Date().toISOString()
-      }
+      allResults,
+      totalResults: allResults.length,
+      query: request.query,
+      orientation: request.orientation,
+      fetchedAt: new Date().toISOString(),
+      searchTime
     };
   }
 
   /**
-   * Single optimized search using Brave Search API
+   * Single optimized search using Brave Search API with caching
    */
   async search(request: SearchRequest): Promise<ApiResponse<IntermediarySearchResponse>> {
-    const startTime = Date.now();
-
     try {
       // Validate request
       const validation = this.validateSearchRequest(request);
@@ -194,65 +214,95 @@ export class BraveSearchEngine implements SearchEngine {
         };
       }
 
-      // Build optimized search URL
-      const searchUrl = this.buildSearchUrl({
-        query: request.query,
-        orientation: request.orientation,
-        count: request.count,
-        start: request.start
-      });
+      // Check for cached raw results first
+      const rawCacheKey = this.createRawResultsCacheKey(request.query, request.orientation);
+      let cachedResults = this.getCachedRawResults(rawCacheKey);
+      
+      // Fetch fresh results if not cached
+      if (!cachedResults) {
+        cachedResults = await this.fetchFromBraveAPI(request);
+        this.setCachedRawResults(rawCacheKey, cachedResults);
+      }
 
-      debugLog('LOG_QUERY_BUILDING', '🔍 [BRAVE SEARCH]', {
-        engine: this.name,
-        originalQuery: request.query,
-        searchUrl: SEARCH_ENGINE_CONFIG.DEBUG.HIDE_API_KEYS 
-          ? searchUrl.replace(this.apiKey, '[API_KEY_HIDDEN]')
-          : searchUrl,
-        strategy: 'brave_operators_optimization'
-      });
-
-      // Single API call to Brave Search
-      const response = await fetch(searchUrl, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'Accept-Encoding': 'gzip',
-          'X-Subscription-Token': this.apiKey,
-          'User-Agent': 'Galactic-Parallax-API/1.0'
-        }
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        debugLog('LOG_API_CALLS', '❌ [BRAVE SEARCH ERROR]', {
+      // Handle empty results
+      if (cachedResults.totalResults === 0) {
+        debugLog('LOG_API_CALLS', '⚠️ [BRAVE SEARCH WARNING]', {
           engine: this.name,
-          status: response.status,
-          error: errorData.message || 'Unknown error'
+          message: 'No results found',
+          query: request.query
         });
         return {
-          success: false,
-          error: `Brave Search API error: ${response.status} - ${errorData.message || 'Unknown error'}`
+          success: true,
+          data: {
+            results: [],
+            pagination: {
+              currentPage: 1,
+              totalResults: 0,
+              resultsPerPage: request.count || 10,
+              totalPages: 0,
+              hasNextPage: false,
+              hasPreviousPage: false
+            },
+            searchInfo: {
+              query: request.query,
+              orientation: request.orientation,
+              searchTime: cachedResults.searchTime,
+              searchEngine: this.name,
+              timestamp: new Date().toISOString()
+            }
+          }
         };
       }
 
-      const braveResponse: BraveSearchResponse = await response.json();
-      const searchTime = (Date.now() - startTime) / 1000;
+      // Generate paginated response from cached results
+      const requestedCount = request.count || 10;
+      const startIndex = request.start || 1;
+      const currentPage = Math.ceil(startIndex / requestedCount);
+      const totalPages = Math.ceil(cachedResults.totalResults / requestedCount);
 
-      // Convert to intermediary format
-      const intermediaryResponse = this.convertToIntermediaryFormat(braveResponse, request, searchTime);
+      // Slice results for the current page
+      const startSliceIndex = startIndex - 1;
+      const endSliceIndex = startSliceIndex + requestedCount;
+      const pageResults = cachedResults.allResults.slice(startSliceIndex, endSliceIndex);
+
+      // Update IDs to reflect actual position in pagination
+      const results: IntermediarySearchResult[] = pageResults.map((item, index) => ({
+        ...item,
+        id: `brave_${startIndex + index}`
+      }));
+
+      const pagination: IntermediaryPaginationInfo = {
+        currentPage,
+        totalResults: cachedResults.totalResults,
+        resultsPerPage: requestedCount,
+        totalPages,
+        hasNextPage: currentPage < totalPages,
+        hasPreviousPage: currentPage > 1,
+        nextStartIndex: currentPage < totalPages ? startIndex + requestedCount : undefined,
+        previousStartIndex: currentPage > 1 ? Math.max(1, startIndex - requestedCount) : undefined
+      };
 
       debugLog('LOG_API_CALLS', '✅ [BRAVE SEARCH SUCCESS]', {
         engine: this.name,
-        resultsFound: intermediaryResponse.results.length,
-        totalResults: intermediaryResponse.pagination.totalResults,
-        searchTime: `${searchTime}s`,
-        strategy: 'brave_image_search'
+        resultsFound: results.length,
+        totalResults: cachedResults.totalResults,
+        searchTime: `${cachedResults.searchTime}ms`,
+        cached: true
       });
 
       return {
         success: true,
-        data: intermediaryResponse,
-        message: `Found ${intermediaryResponse.results.length} results using Brave Search`
+        data: {
+          results,
+          pagination,
+          searchInfo: {
+            query: request.query,
+            orientation: request.orientation,
+            searchTime: cachedResults.searchTime,
+            searchEngine: this.name,
+            timestamp: new Date().toISOString()
+          }
+        }
       };
 
     } catch (error) {
@@ -263,7 +313,7 @@ export class BraveSearchEngine implements SearchEngine {
       });
       return {
         success: false,
-        error: 'Internal Brave Search service error'
+        error: `Brave search failed: ${error instanceof Error ? error.message : 'Unknown error'}`
       };
     }
   }
@@ -273,12 +323,13 @@ export class BraveSearchEngine implements SearchEngine {
    */
   async healthCheck(): Promise<{ healthy: boolean; message: string }> {
     try {
-      const testUrl = this.buildSearchUrl({ 
-        query: 'test wallpaper', 
-        count: 1 
-      });
+      const url = new URL(this.baseUrl);
+      url.searchParams.set('q', 'test wallpaper');
+      url.searchParams.set('count', '1');
+      url.searchParams.set('safesearch', 'off');
+      url.searchParams.set('spellcheck', 'false');
 
-      const response = await fetch(testUrl, {
+      const response = await fetch(url.toString(), {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
