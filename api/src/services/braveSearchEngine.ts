@@ -28,6 +28,7 @@ export class BraveSearchEngine implements SearchEngine {
     query: string;
     orientation?: 'landscape' | 'portrait';
     count?: number;
+    start?: number;
     country?: string;
     safesearch?: 'off' | 'strict';
     search_lang?: string;
@@ -48,6 +49,13 @@ export class BraveSearchEngine implements SearchEngine {
     url.searchParams.set('count', String(Math.min(params.count || 50, 100))); // Default 50, max 100
     url.searchParams.set('safesearch', params.safesearch || 'off'); // Default to strict for wallpapers
     url.searchParams.set('spellcheck', 'false'); // Disable spellcheck (boolean as string)
+
+    // Add pagination support using offset parameter
+    if (params.start && params.start > 1) {
+      const resultsPerPage = params.count || 50;
+      const offset = Math.floor((params.start - 1) / resultsPerPage);
+      url.searchParams.set('offset', String(Math.min(offset, 9))); // Max offset is 9 per Brave API docs
+    }
 
     return url.toString();
   }
@@ -81,7 +89,7 @@ export class BraveSearchEngine implements SearchEngine {
 
   /**
    * Convert Brave Image Search response to intermediary format
-   * Note: Brave Image Search API doesn't support pagination and doesn't provide image dimensions
+   * Note: Brave Image Search API supports pagination via offset parameter
    */
   private convertToIntermediaryFormat(
     braveResponse: BraveSearchResponse, 
@@ -89,6 +97,8 @@ export class BraveSearchEngine implements SearchEngine {
     searchTime: number
   ): IntermediarySearchResponse {
     const resultsPerPage = request.count || 50;
+    const currentStartIndex = request.start || 1;
+    const currentPage = Math.ceil(currentStartIndex / resultsPerPage);
 
     // Extract image results from Brave response (direct results array)
     const imageResults = braveResponse.results || [];
@@ -114,7 +124,7 @@ export class BraveSearchEngine implements SearchEngine {
         });
 
         return {
-          id: `brave_${index + 1}`,
+          id: `brave_${currentStartIndex + index}`,
           title: item.title || 'Untitled',
           url: item.properties.url,
           thumbnailUrl: item.thumbnail.src,
@@ -129,19 +139,30 @@ export class BraveSearchEngine implements SearchEngine {
         };
       });
 
-    // Brave Image Search API returns single page of results (no pagination support)
-    const totalResults = results.length;
-    const totalPages = 1;
+    // Calculate pagination based on Brave API limitations
+    // Brave supports up to 10 pages (offset 0-9) with max 100 results per page
+    const maxOffset = 9;
+    const maxResultsPerOffset = 100;
+    // Estimate total results: if we got a full page, assume there might be more
+    const estimatedTotalResults = results.length === resultsPerPage 
+      ? Math.min(resultsPerPage * (maxOffset + 1), 1000) // Assume max possible if full page
+      : currentStartIndex + results.length - 1; // Exact count if partial page
+    const totalPages = Math.min(Math.ceil(estimatedTotalResults / resultsPerPage), maxOffset + 1);
+    
+    // Determine if there are more pages available
+    const currentOffset = Math.floor((currentStartIndex - 1) / resultsPerPage);
+    const hasNextPage = currentOffset < maxOffset && results.length === resultsPerPage;
+    const hasPreviousPage = currentPage > 1;
 
     const pagination: IntermediaryPaginationInfo = {
-      currentPage: 1,
-      totalResults,
+      currentPage,
+      totalResults: estimatedTotalResults,
       resultsPerPage,
       totalPages,
-      hasNextPage: false, // Brave Image Search doesn't support pagination
-      hasPreviousPage: false,
-      nextStartIndex: undefined,
-      previousStartIndex: undefined
+      hasNextPage,
+      hasPreviousPage,
+      nextStartIndex: hasNextPage ? currentStartIndex + resultsPerPage : undefined,
+      previousStartIndex: hasPreviousPage ? Math.max(1, currentStartIndex - resultsPerPage) : undefined
     };
 
     return {
@@ -177,7 +198,8 @@ export class BraveSearchEngine implements SearchEngine {
       const searchUrl = this.buildSearchUrl({
         query: request.query,
         orientation: request.orientation,
-        count: request.count
+        count: request.count,
+        start: request.start
       });
 
       debugLog('LOG_QUERY_BUILDING', '🔍 [BRAVE SEARCH]', {
