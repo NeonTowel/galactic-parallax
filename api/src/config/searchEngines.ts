@@ -9,9 +9,9 @@ export const SEARCH_ENGINE_CONFIG = {
   } as const,
   ENGINE_SELECTION: {
     USE_OPTIMAL_SELECTION: false,  // If true, automatically selects best available engine
-    FORCE_ENGINE: 'serper' as const, // Force this specific engine (when USE_OPTIMAL_SELECTION is false)
+    FORCE_ENGINE: 'google' as const, // Force this specific engine (when USE_OPTIMAL_SELECTION is false)
     FALLBACK_TO_OPTIMAL: true,     // If forced engine unavailable, fall back to optimal selection
-    PRIORITY_ORDER: ['brave', 'serper', 'google', 'zenserp', 'mock'] as const // Priority for optimal selection
+    PRIORITY_ORDER: ['google', 'brave', 'serper', 'zenserp', 'mock'] as const // Priority for optimal selection
   } as const,
   TBS_SUPPORT: {
     ZENSERP: true,  // Zenserp supports TBS parameters
