@@ -1,666 +1,277 @@
 <script lang="ts">
-  import {
-    isLoading,
-    isAuthenticated,
-    user,
-    authError,
-    login,
-    logout,
-  } from "$lib/auth.js";
-  import { apiService } from "$lib/api.js";
-  import type { SearchResponse, SearchResult } from "$lib/types.js";
-  import { onMount, onDestroy } from "svelte";
+  import { isAuthenticated } from "$lib/auth";
+  import { apiService } from "$lib/api";
+  import type {
+    SearchResponse,
+    SearchResult,
+    PaginationInfo,
+  } from "$lib/types";
 
-  let searchQuery = "";
-  let isSearching = false;
-  let searchResults: SearchResponse | null = null;
-  let searchError: string | null = null;
-  let orientation: "landscape" | "portrait" = "landscape";
-  let currentPage = 1;
-  const resultsPerPage = 10;
-  let isClearingCache = false;
-  let clearCacheMessage: string | null = null;
-  let clearCacheError: string | null = null;
+  // Import components
+  import AuthSection from "$lib/components/AuthSection.svelte";
+  import SearchBarComponent from "$lib/components/SearchBar.svelte";
+  import SearchResultsDisplay from "$lib/components/SearchResults.svelte";
+  import PaginationControls from "$lib/components/Pagination.svelte";
+  import ClearCacheButton from "$lib/components/ClearCacheButton.svelte";
 
-  // --- Search Suggestions State ---
-  let suggestions: string[] = [];
-  let isFetchingSuggestions = false;
-  let suggestionsError: string | null = null;
-  let showSuggestions = false;
-  let suggestionTimeoutId: number | undefined = undefined;
-  const DEBOUNCE_DELAY = 300; // milliseconds
+  let searchQueryFromInput = "";
+  let currentOrientation: "landscape" | "portrait" = "landscape";
 
-  // Calculate pagination from intermediary schema
-  $: pagination = searchResults?.data?.pagination;
-  $: totalResults = pagination?.totalResults || 0;
-  $: totalPages = pagination?.totalPages || 0;
-  $: hasNextPage = pagination?.hasNextPage || false;
-  $: hasPreviousPage = pagination?.hasPreviousPage || false;
-  $: startIndex = (currentPage - 1) * resultsPerPage + 1;
+  let isSearchingCurrently = false;
+  let searchResponseData: SearchResponse | null = null;
+  let searchErrorToDisplay: string | null = null;
+  let currentPageNumber = 1;
+  const resultsPerPageCount = 10;
 
-  async function handleSearch(page: number = 1) {
-    if (!searchQuery.trim()) return;
+  // Reactive derivations for results and pagination
+  $: currentSearchResultsList = searchResponseData?.data?.results ?? null;
+  $: paginationDetails = searchResponseData?.data?.pagination;
 
-    isSearching = true;
-    searchError = null;
-    showSuggestions = false; // Hide suggestions when search starts
-    currentPage = page;
+  $: totalResults = paginationDetails?.totalResults ?? 0;
+  $: totalPages = paginationDetails?.totalPages ?? 0;
+  $: hasNextPage = paginationDetails?.hasNextPage ?? false;
+  $: hasPreviousPage = paginationDetails?.hasPreviousPage ?? false;
 
-    try {
-      const response = await apiService.searchImages({
-        q: searchQuery,
-        orientation,
-        count: resultsPerPage,
-        start: (page - 1) * resultsPerPage + 1,
-      });
+  // To store feedback from ClearCacheButton events
+  let cacheNotification: { type: "success" | "error"; message: string } | null =
+    null;
+  let cacheNotificationTimeout: number | undefined;
 
-      searchResults = response;
-    } catch (error) {
-      console.error("Search error:", error);
-      searchError =
-        error instanceof Error ? error.message : "An unexpected error occurred";
-      searchResults = null;
-    } finally {
-      isSearching = false;
-    }
-  }
-
-  // --- Fetch Search Suggestions (Debounced) ---
-  async function fetchSuggestions() {
-    if (!searchQuery.trim() || searchQuery.length < 2) {
-      suggestions = [];
-      showSuggestions = false;
+  async function performSearch(
+    page: number = 1,
+    query: string = searchQueryFromInput,
+    orientationSetting: "landscape" | "portrait" = currentOrientation
+  ) {
+    if (!query.trim()) {
+      // Clear results if query is empty, but don't set error
+      searchResponseData = null;
+      searchErrorToDisplay = null;
+      isSearchingCurrently = false;
       return;
     }
 
-    isFetchingSuggestions = true;
-    suggestionsError = null;
+    isSearchingCurrently = true;
+    searchErrorToDisplay = null;
+    currentPageNumber = page;
+    searchQueryFromInput = query;
+    currentOrientation = orientationSetting;
 
     try {
-      const response = await apiService.getSearchSuggestions(searchQuery);
-      if (response.success && response.data) {
-        suggestions = response.data;
-        showSuggestions = suggestions.length > 0;
-      } else {
-        suggestionsError = response.error || "Failed to fetch suggestions.";
-        suggestions = [];
-        showSuggestions = false;
-      }
+      const response = await apiService.searchImages({
+        q: query,
+        orientation: orientationSetting,
+        count: resultsPerPageCount,
+        start: (page - 1) * resultsPerPageCount + 1,
+      });
+      searchResponseData = response;
     } catch (error) {
-      console.error("Suggestions fetch error:", error);
-      suggestionsError =
-        error instanceof Error ? error.message : "Error fetching suggestions.";
-      suggestions = [];
-      showSuggestions = false;
+      console.error("Search error:", error);
+      searchErrorToDisplay =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      searchResponseData = null;
     } finally {
-      isFetchingSuggestions = false;
+      isSearchingCurrently = false;
     }
   }
 
-  function debouncedFetchSuggestions() {
-    clearTimeout(suggestionTimeoutId);
-    if (searchQuery.length >= 2) {
-      // Only fetch if query is long enough
-      suggestionTimeoutId = window.setTimeout(fetchSuggestions, DEBOUNCE_DELAY);
-    } else {
-      suggestions = [];
-      showSuggestions = false;
+  function handleSearchTriggered(
+    event: CustomEvent<{ query: string; orientation: "landscape" | "portrait" }>
+  ) {
+    performSearch(1, event.detail.query, event.detail.orientation);
+  }
+
+  function handleOrientationChanged(
+    event: CustomEvent<{ orientation: "landscape" | "portrait" }>
+  ) {
+    // SearchBar component's current implementation dispatches 'search' event on orientation change if query exists.
+    // This ensures currentOrientation state in this parent component is also updated.
+    currentOrientation = event.detail.orientation;
+    // If the search bar didn't trigger search itself, we would do it here:
+    // if (searchQueryFromInput.trim()) {
+    //   performSearch(1, searchQueryFromInput, event.detail.orientation);
+    // }
+  }
+
+  function handleQueryUpdated(event: CustomEvent<{ query: string }>) {
+    // This ensures parent's searchQueryFromInput is in sync with SearchBar's internal state
+    searchQueryFromInput = event.detail.query;
+  }
+
+  function handlePageChanged(event: CustomEvent<{ page: number }>) {
+    performSearch(event.detail.page, searchQueryFromInput, currentOrientation);
+  }
+
+  function clearSearchAndResults() {
+    searchResponseData = null;
+    searchErrorToDisplay = null;
+    searchQueryFromInput = ""; // This will also clear it in SearchBar due to binding
+    currentOrientation = "landscape"; // Reset to default
+    currentPageNumber = 1;
+  }
+
+  function handleCacheCleared(event: CustomEvent<string>) {
+    cacheNotification = { type: "success", message: event.detail };
+    clearTimeout(cacheNotificationTimeout);
+    cacheNotificationTimeout = window.setTimeout(
+      () => (cacheNotification = null),
+      4000
+    );
+    // Optionally clear search results or trigger other actions
+    if (searchQueryFromInput) {
+      performSearch(1); // Re-run current search to get fresh (non-cached) results if desired
     }
   }
 
-  function handleSuggestionClick(suggestion: string) {
-    searchQuery = suggestion;
-    showSuggestions = false;
-    handleSearch(1); // Optionally trigger search immediately
+  function handleCacheClearError(event: CustomEvent<string>) {
+    cacheNotification = { type: "error", message: event.detail };
+    clearTimeout(cacheNotificationTimeout);
+    cacheNotificationTimeout = window.setTimeout(
+      () => (cacheNotification = null),
+      4000
+    );
   }
-
-  function handleKeydown(event: KeyboardEvent) {
-    if (event.key === "Enter") {
-      showSuggestions = false; // Hide suggestions on Enter
-      handleSearch(1);
-    }
-    // Basic Escape key handling for suggestions
-    if (event.key === "Escape") {
-      showSuggestions = false;
-    }
-  }
-
-  function handleOrientationChange() {
-    if (searchResults) {
-      handleSearch(1);
-    }
-  }
-
-  function goToPage(page: number) {
-    if (page >= 1 && page <= totalPages) {
-      handleSearch(page);
-    }
-  }
-
-  function clearSearch() {
-    searchResults = null;
-    searchError = null;
-    searchQuery = "";
-    suggestions = [];
-    showSuggestions = false;
-    currentPage = 1;
-  }
-
-  async function handleClearCache() {
-    isClearingCache = true;
-    clearCacheMessage = null;
-    clearCacheError = null;
-
-    try {
-      const response = await apiService.clearUserSearchCache();
-      if (response.success) {
-        clearCacheMessage =
-          response.message || "Your search cache has been cleared.";
-        searchResults = null; // Clear displayed results
-        currentPage = 1; // Reset pagination
-        searchQuery = "";
-        suggestions = [];
-        showSuggestions = false;
-      } else {
-        clearCacheError =
-          response.error || "Failed to clear cache. Please try again.";
-      }
-    } catch (error) {
-      console.error("Clear cache error:", error);
-      clearCacheError =
-        error instanceof Error
-          ? error.message
-          : "An unexpected error occurred while clearing cache.";
-    } finally {
-      isClearingCache = false;
-      // Auto-hide messages after a few seconds
-      setTimeout(() => {
-        clearCacheMessage = null;
-        clearCacheError = null;
-      }, 5000);
-    }
-  }
-
-  // Generate pagination numbers
-  $: paginationNumbers = (() => {
-    const numbers = [];
-    const maxVisible = 5;
-    let start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
-    let end = Math.min(totalPages, start + maxVisible - 1);
-
-    if (end - start + 1 < maxVisible) {
-      start = Math.max(1, end - maxVisible + 1);
-    }
-
-    for (let i = start; i <= end; i++) {
-      numbers.push(i);
-    }
-
-    return numbers;
-  })();
-
-  // Hide suggestions if user clicks outside
-  function handleClickOutside(event: MouseEvent) {
-    const target = event.target as HTMLElement;
-    if (showSuggestions && !target.closest(".search-input-container")) {
-      // Assign a class to container
-      showSuggestions = false;
-    }
-  }
-
-  onMount(() => {
-    document.addEventListener("click", handleClickOutside);
-  });
-
-  onDestroy(() => {
-    document.removeEventListener("click", handleClickOutside);
-    clearTimeout(suggestionTimeoutId); // Clear timeout on component destroy
-  });
 </script>
 
-<main class="min-h-screen bg-rose-pine-base text-rose-pine-text">
-  {#if $isLoading}
-    <!-- Loading State -->
+<div
+  class="min-h-screen bg-rose-pine-base text-rose-pine-text flex flex-col items-center"
+>
+  <AuthSection>
+    <!-- Slot content for authenticated header actions -->
+    <svelte:fragment slot="actions">
+      {#if $isAuthenticated}
+        <!-- We still need this check here for the CONTENT of the slot -->
+        {#if currentSearchResultsList && currentSearchResultsList.length > 0}
+          <!-- Show New Search only when results are present -->
+          <button
+            on:click={clearSearchAndResults}
+            class="px-3 md:px-4 py-2 text-sm md:text-base bg-rose-pine-surface text-rose-pine-subtle hover:text-rose-pine-text hover:border-rose-pine-iris border border-rose-pine-overlay rounded-lg transition-colors duration-200"
+          >
+            New Search
+          </button>
+        {/if}
+        <ClearCacheButton
+          on:cleared={handleCacheCleared}
+          on:error={handleCacheClearError}
+        />
+      {/if}
+    </svelte:fragment>
+  </AuthSection>
+
+  <!-- Conditional content based on authentication and search state -->
+  {#if $isAuthenticated}
     <div
-      class="flex flex-col items-center justify-center min-h-screen space-y-4"
+      class="w-full max-w-6xl mx-auto px-4 md:px-6 lg:px-8 flex-grow flex flex-col items-center"
     >
-      <div
-        class="animate-spin rounded-full h-12 w-12 border-4 border-rose-pine-iris border-t-transparent"
-      ></div>
-      <p class="text-rose-pine-muted">Initializing authentication...</p>
-    </div>
-  {:else if $authError}
-    <!-- Error State -->
-    <div
-      class="flex flex-col items-center justify-center min-h-screen space-y-6 max-w-md mx-auto text-center px-6"
-    >
-      <h1 class="text-4xl font-bold text-rose-pine-love">
-        Authentication Error
-      </h1>
-      <p
-        class="text-rose-pine-text bg-rose-pine-surface px-4 py-3 rounded-lg border border-rose-pine-overlay"
-      >
-        {$authError}
-      </p>
-      <button
-        on:click={() => window.location.reload()}
-        class="px-6 py-3 bg-rose-pine-iris text-rose-pine-base font-semibold rounded-lg
-               hover:bg-rose-pine-iris/90 transition-colors duration-200"
-      >
-        Try Again
-      </button>
-    </div>
-  {:else if !$isAuthenticated}
-    <!-- Login State -->
-    <div
-      class="flex flex-col items-center justify-center min-h-screen space-y-8 max-w-md mx-auto text-center px-6"
-    >
-      <!-- Header -->
-      <header>
+      <!-- Centered Header for Authenticated Users (Galactic Parallax title) -->
+      <header class="my-8 md:my-12 text-center w-full">
         <h1
-          class="text-6xl md:text-7xl font-bold bg-gradient-to-r from-rose-pine-love via-rose-pine-iris to-rose-pine-foam bg-clip-text text-transparent mb-4"
+          class="text-6xl md:text-7xl font-bold bg-gradient-to-r from-rose-pine-love via-rose-pine-iris to-rose-pine-foam bg-clip-text text-transparent galactic-title-animation"
         >
           Galactic Parallax
         </h1>
-        <p class="text-rose-pine-subtle text-lg">
-          Discover intergalactic-quality wallpapers
-        </p>
       </header>
 
-      <!-- Login Section -->
-      <div
-        class="bg-rose-pine-surface border border-rose-pine-overlay rounded-xl p-8 w-full"
-      >
-        <h2 class="text-2xl font-semibold mb-4 text-rose-pine-text">
-          Welcome Back
-        </h2>
-        <p class="text-rose-pine-muted mb-6">
-          Sign in to access your personalized wallpaper search experience
-        </p>
-
-        <button
-          on:click={login}
-          class="w-full px-6 py-4 bg-rose-pine-iris text-rose-pine-base font-semibold rounded-lg
-                 hover:bg-rose-pine-iris/90 focus:outline-none focus:ring-2 focus:ring-rose-pine-iris/20
-                 transition-all duration-200 text-lg"
-        >
-          Sign In with Auth0
-        </button>
+      <!-- Search Bar and Options -->
+      <div class="w-full max-w-4xl mb-6 md:mb-10">
+        <SearchBarComponent
+          bind:searchQuery={searchQueryFromInput}
+          bind:orientation={currentOrientation}
+          on:search={handleSearchTriggered}
+          on:orientationChange={handleOrientationChanged}
+          on:queryChange={handleQueryUpdated}
+        />
+        {#if !currentSearchResultsList && !isSearchingCurrently && !searchErrorToDisplay && !searchQueryFromInput}
+          <p class="text-rose-pine-muted text-sm text-center mt-3">
+            Press Enter to search for wallpapers
+          </p>
+        {/if}
       </div>
 
-      <!-- Footer -->
-      <p class="text-rose-pine-muted text-sm">
-        Secure authentication powered by Auth0
-      </p>
-    </div>
-  {:else}
-    <!-- Authenticated - Show Search UI -->
-    <div class="w-full">
-      <!-- Header Section - Fixed at top when results are shown -->
-      <div
-        class="{searchResults
-          ? 'sticky top-0 z-10 bg-rose-pine-base border-b border-rose-pine-overlay'
-          : 'flex flex-col items-center justify-center min-h-screen'} px-6 py-6"
-      >
-        <!-- User Info & Logout -->
+      <!-- Cache Notification -->
+      {#if cacheNotification}
         <div
-          class="flex justify-between items-center mb-6 max-w-6xl mx-auto w-full"
+          class="w-full max-w-3xl mb-4 p-3 rounded-lg text-sm text-center
+                 {cacheNotification.type === 'success'
+            ? 'bg-rose-pine-foam/20 text-rose-pine-foam border border-rose-pine-foam/30'
+            : 'bg-rose-pine-love/20 text-rose-pine-love border border-rose-pine-love/30'}"
+          role="alert"
         >
-          <div class="flex items-center space-x-3">
-            {#if $user?.picture}
-              <img
-                src={$user.picture}
-                alt={$user.name || "User"}
-                class="w-10 h-10 rounded-full border-2 border-rose-pine-overlay"
-              />
-            {/if}
-            <div>
-              <p class="text-rose-pine-text font-medium">
-                Welcome, {$user?.name || $user?.email || "User"}!
-              </p>
-              <p class="text-rose-pine-muted text-sm">
-                Ready to explore the galaxy?
-              </p>
-            </div>
-          </div>
-
-          <div class="flex items-center space-x-4">
-            {#if searchResults}
-              <button
-                on:click={clearSearch}
-                class="px-4 py-2 text-rose-pine-muted hover:text-rose-pine-text
-                       border border-rose-pine-overlay hover:border-rose-pine-subtle
-                       rounded-lg transition-colors duration-200"
-              >
-                New Search
-              </button>
-            {/if}
-            <button
-              on:click={handleClearCache}
-              disabled={isClearingCache}
-              class="px-4 py-2 text-rose-pine-muted hover:text-rose-pine-text
-                     border border-rose-pine-overlay hover:border-rose-pine-subtle
-                     rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isClearingCache ? "Clearing..." : "Clear My Cache"}
-            </button>
-            <button
-              on:click={logout}
-              class="px-4 py-2 text-rose-pine-muted hover:text-rose-pine-text
-                     border border-rose-pine-overlay hover:border-rose-pine-subtle
-                     rounded-lg transition-colors duration-200"
-            >
-              Sign Out
-            </button>
-          </div>
+          {cacheNotification.message}
         </div>
+      {/if}
 
-        <!-- Header Title -->
-        <header class="mb-6 text-center max-w-6xl mx-auto w-full">
-          <h1
-            class="{searchResults
-              ? 'text-4xl md:text-5xl'
-              : 'text-6xl md:text-7xl'} font-bold bg-gradient-to-r from-rose-pine-love via-rose-pine-iris to-rose-pine-foam bg-clip-text text-transparent transition-all duration-300"
-          >
-            Galactic Parallax
-          </h1>
-        </header>
-
-        <!-- Search Controls -->
-        <div class="w-full max-w-4xl mx-auto space-y-4">
-          <!-- Cache Clear Messages -->
-          {#if clearCacheMessage}
-            <div
-              class="p-3 bg-rose-pine-foam/10 border border-rose-pine-foam/20 rounded-lg text-rose-pine-foam text-sm"
-            >
-              {clearCacheMessage}
-            </div>
-          {/if}
-          {#if clearCacheError}
-            <div
-              class="p-3 bg-rose-pine-love/10 border border-rose-pine-love/20 rounded-lg text-rose-pine-love text-sm"
-            >
-              {clearCacheError}
-            </div>
-          {/if}
-
-          <!-- Search Input and Suggestions Container -->
-          <div class="relative search-input-container">
-            <input
-              type="text"
-              bind:value={searchQuery}
-              on:input={debouncedFetchSuggestions}
-              on:keydown={handleKeydown}
-              on:focus={() => {
-                if (searchQuery.length >= 2 && suggestions.length > 0)
-                  showSuggestions = true;
-              }}
-              placeholder="Type in your search..."
-              disabled={isSearching}
-              class="w-full px-6 py-4 text-xl bg-rose-pine-surface border-2 border-rose-pine-overlay rounded-xl
-                     focus:border-rose-pine-iris focus:outline-none focus:ring-2 focus:ring-rose-pine-iris/20
-                     placeholder:text-rose-pine-muted text-rose-pine-text
-                     transition-all duration-200 ease-in-out
-                     disabled:opacity-50 disabled:cursor-not-allowed"
-              autocomplete="off"
-            />
-
-            <!-- Loading indicator for search input -->
-            {#if isSearching || isFetchingSuggestions}
-              <div class="absolute right-4 top-1/2 transform -translate-y-1/2">
-                <div
-                  class="animate-spin rounded-full h-6 w-6 border-2 border-rose-pine-iris border-t-transparent"
-                ></div>
-              </div>
-            {/if}
-
-            <!-- Suggestions Dropdown -->
-            {#if showSuggestions && suggestions.length > 0}
-              <ul
-                class="absolute z-20 w-full mt-1 bg-rose-pine-surface border-2 border-rose-pine-overlay rounded-lg shadow-xl max-h-60 overflow-y-auto"
-              >
-                {#each suggestions as suggestion (suggestion)}
-                  <li
-                    class="px-4 py-2 text-rose-pine-text hover:bg-rose-pine-muted cursor-pointer"
-                    on:click={() => handleSuggestionClick(suggestion)}
-                    on:mousedown|preventDefault
-                  >
-                    {suggestion}
-                  </li>
-                {/each}
-              </ul>
-            {/if}
-            {#if showSuggestions && suggestions.length === 0 && searchQuery.length >= 2 && !isFetchingSuggestions && !suggestionsError}
-              <div
-                class="absolute z-20 w-full mt-1 bg-rose-pine-surface border-2 border-rose-pine-overlay rounded-lg shadow-xl p-3 text-sm text-rose-pine-muted"
-              >
-                No suggestions found.
-              </div>
-            {/if}
-            {#if suggestionsError && showSuggestions}
-              <div
-                class="absolute z-20 w-full mt-1 bg-rose-pine-surface border-2 border-rose-pine-love/50 rounded-lg shadow-xl p-3 text-sm text-rose-pine-love"
-              >
-                Error: {suggestionsError}
-              </div>
-            {/if}
-          </div>
-
-          <!-- Search Options -->
-          <div class="flex flex-wrap items-center justify-between gap-4">
-            <div class="flex items-center space-x-4">
-              <label class="text-rose-pine-text font-medium">Orientation:</label
-              >
-              <select
-                bind:value={orientation}
-                on:change={handleOrientationChange}
-                disabled={isSearching}
-                class="px-3 py-2 bg-rose-pine-surface border border-rose-pine-overlay rounded-lg
-                       focus:border-rose-pine-iris focus:outline-none focus:ring-1 focus:ring-rose-pine-iris/20
-                       text-rose-pine-text disabled:opacity-50"
-              >
-                <option value="landscape">Landscape</option>
-                <option value="portrait">Portrait</option>
-              </select>
-            </div>
-
-            <button
-              on:click={() => handleSearch(1)}
-              disabled={isSearching || !searchQuery.trim()}
-              class="px-6 py-2 bg-rose-pine-iris text-rose-pine-base font-semibold rounded-lg
-                     hover:bg-rose-pine-iris/90 focus:outline-none focus:ring-2 focus:ring-rose-pine-iris/20
-                     transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isSearching ? "Searching..." : "Search"}
-            </button>
-          </div>
-
-          <!-- Subtle hint text -->
-          {#if !searchResults}
-            <p class="text-rose-pine-muted text-sm text-center">
-              Press Enter to search for wallpapers
-            </p>
-          {/if}
-
-          <!-- Error Display -->
-          {#if searchError}
-            <div class="mt-4">
-              <div
-                class="bg-rose-pine-love/10 border border-rose-pine-love/20 rounded-lg p-4"
-              >
-                <div class="flex items-center space-x-3">
-                  <div class="text-rose-pine-love">
-                    <svg
-                      class="w-5 h-5"
-                      fill="currentColor"
-                      viewBox="0 0 20 20"
-                    >
-                      <path
-                        fill-rule="evenodd"
-                        d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                        clip-rule="evenodd"
-                      />
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 class="text-rose-pine-love font-semibold">
-                      Search Error
-                    </h3>
-                    <p class="text-rose-pine-text">{searchError}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          {/if}
+      <!-- Search Results Display Area -->
+      {#if searchErrorToDisplay}
+        <div class="w-full max-w-4xl">
+          <SearchResultsDisplay
+            results={null}
+            isLoading={false}
+            error={searchErrorToDisplay}
+            searchQuery={searchQueryFromInput}
+          />
         </div>
-      </div>
-
-      <!-- Search Results -->
-      {#if searchResults && searchResults.data.results}
-        <div class="max-w-6xl mx-auto px-6 py-6">
-          <!-- Results Info -->
-          <div class="mb-6 flex flex-wrap items-center justify-between gap-4">
-            <div class="text-rose-pine-muted">
-              <p>
-                Found {pagination?.totalResults.toLocaleString()} results in {searchResults.data.searchInfo.searchTime.toFixed(
-                  2
-                )} seconds
-              </p>
-              <p class="text-sm">
-                Showing {startIndex}-{Math.min(
-                  startIndex + resultsPerPage - 1,
-                  totalResults
-                )} of {pagination?.totalResults.toLocaleString()}
-              </p>
-            </div>
+      {:else if isSearchingCurrently && !currentSearchResultsList}
+        <div class="flex-grow flex flex-col items-center justify-center w-full">
+          <SearchResultsDisplay
+            results={null}
+            isLoading={true}
+            error={null}
+            searchQuery={searchQueryFromInput}
+          />
+        </div>
+      {:else if currentSearchResultsList && currentSearchResultsList.length > 0}
+        <div class="w-full">
+          <div class="text-rose-pine-muted text-sm mb-4 text-center">
+            Found {totalResults.toLocaleString()} results in {searchResponseData?.data?.searchInfo?.searchTime?.toFixed(
+              2
+            ) ?? "N/A"} seconds. Showing {(currentPageNumber - 1) *
+              resultsPerPageCount +
+              1}-{Math.min(
+              currentPageNumber * resultsPerPageCount,
+              totalResults
+            )} of {totalResults.toLocaleString()}.
           </div>
-
-          <!-- Results Grid -->
-          <div
-            class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mb-8"
-          >
-            {#each searchResults.data.results as result (result.id)}
-              <div
-                class="group relative bg-rose-pine-surface rounded-lg overflow-hidden border border-rose-pine-overlay hover:border-rose-pine-subtle transition-all duration-200"
-              >
-                <div class="aspect-video relative overflow-hidden">
-                  <img
-                    src={result.thumbnailUrl}
-                    alt={result.title}
-                    class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                    loading="lazy"
-                  />
-                  <div
-                    class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-200"
-                  ></div>
-                </div>
-
-                <div class="p-3">
-                  <h3
-                    class="text-sm font-medium text-rose-pine-text line-clamp-2 mb-1"
-                  >
-                    {result.title}
-                  </h3>
-                  <p class="text-xs text-rose-pine-muted line-clamp-1 mb-2">
-                    {result.sourceDomain}
-                  </p>
-                  <div
-                    class="flex items-center justify-between text-xs text-rose-pine-muted"
-                  >
-                    <span>{result.width}×{result.height}</span>
-                    <span
-                      >{result.fileSize
-                        ? (result.fileSize / 1024 / 1024).toFixed(1) + "MB"
-                        : "N/A"}</span
-                    >
-                    {#if result.source_engine}
-                      <div class="mt-1 text-right">
-                        <span
-                          class="inline-block text-xs bg-rose-pine-overlay text-rose-pine-subtle px-1.5 py-0.5 rounded-sm"
-                        >
-                          {result.source_engine.charAt(0).toUpperCase() +
-                            result.source_engine.slice(1)}
-                        </span>
-                      </div>
-                    {/if}
-                  </div>
-                </div>
-
-                <!-- Hover overlay with actions -->
-                <div
-                  class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center"
-                >
-                  <div class="flex space-x-2">
-                    <a
-                      href={result.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      class="px-3 py-1 bg-rose-pine-iris text-rose-pine-base text-sm font-medium rounded hover:bg-rose-pine-iris/90 transition-colors"
-                    >
-                      View Full
-                    </a>
-                    <a
-                      href={result.sourceUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      class="px-3 py-1 bg-rose-pine-surface text-rose-pine-text text-sm font-medium rounded hover:bg-rose-pine-overlay transition-colors"
-                    >
-                      Source
-                    </a>
-                  </div>
-                </div>
-              </div>
-            {/each}
-          </div>
-
-          <!-- Pagination -->
+          <SearchResultsDisplay
+            results={currentSearchResultsList}
+            isLoading={isSearchingCurrently &&
+              currentSearchResultsList.length > 0}
+            error={null}
+            searchQuery={searchQueryFromInput}
+          />
           {#if totalPages > 1}
-            <div class="flex items-center justify-center space-x-2">
-              <!-- Previous button -->
-              <button
-                on:click={() => goToPage(currentPage - 1)}
-                disabled={!hasPreviousPage}
-                class="px-3 py-2 text-rose-pine-muted hover:text-rose-pine-text border border-rose-pine-overlay hover:border-rose-pine-subtle rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Previous
-              </button>
-
-              <!-- Page numbers -->
-              {#each paginationNumbers as pageNum}
-                <button
-                  on:click={() => goToPage(pageNum)}
-                  class="px-3 py-2 {pageNum === currentPage
-                    ? 'bg-rose-pine-iris text-rose-pine-base'
-                    : 'text-rose-pine-muted hover:text-rose-pine-text border border-rose-pine-overlay hover:border-rose-pine-subtle'} rounded-lg transition-colors duration-200"
-                >
-                  {pageNum}
-                </button>
-              {/each}
-
-              <!-- Next button -->
-              <button
-                on:click={() => goToPage(currentPage + 1)}
-                disabled={!hasNextPage}
-                class="px-3 py-2 text-rose-pine-muted hover:text-rose-pine-text border border-rose-pine-overlay hover:border-rose-pine-subtle rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Next
-              </button>
-            </div>
+            <PaginationControls
+              currentPage={currentPageNumber}
+              {totalPages}
+              {hasNextPage}
+              {hasPreviousPage}
+              on:pageChange={handlePageChanged}
+            />
           {/if}
+        </div>
+      {:else if searchQueryFromInput && !isSearchingCurrently && (!currentSearchResultsList || currentSearchResultsList.length === 0)}
+        <div class="w-full max-w-4xl">
+          <SearchResultsDisplay
+            results={[]}
+            isLoading={false}
+            error={null}
+            searchQuery={searchQueryFromInput}
+          />
         </div>
       {/if}
     </div>
   {/if}
-</main>
+</div>
 
 <style>
-  /* Custom gradient animation for the title */
-  h1 {
+  .container {
+    max-width: 1400px;
+  }
+  .galactic-title-animation {
     background-size: 200% 200%;
-    animation: gradient 3s ease infinite;
+    animation: gradient-animation 3s ease infinite;
   }
 
-  @keyframes gradient {
+  @keyframes gradient-animation {
     0% {
       background-position: 0% 50%;
     }
@@ -670,20 +281,5 @@
     100% {
       background-position: 0% 50%;
     }
-  }
-
-  /* Line clamp utilities */
-  .line-clamp-1 {
-    display: -webkit-box;
-    -webkit-line-clamp: 1;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-
-  .line-clamp-2 {
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
   }
 </style>
