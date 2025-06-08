@@ -25,3 +25,8 @@ AUTH0_AUDIENCE = "https://parallax.apis.neontowel.dev"
 # These should be set as secrets in production:
 # wrangler secret put ZENSERP_API_KEY
 # ZENSERP_API_KEY = "your-api-key-here"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "parallax"
+database_id = "bf1447cb-ee86-4f45-8438-8093ba271002"

@@ -205,7 +205,7 @@ export class SerperSearchEngine implements SearchEngine {
     });
 
     // Convert to intermediary format
-    const allResults: IntermediarySearchResult[] = filteredResults.map((item, index) => ({
+    const allResults: IntermediarySearchResult[] = filteredResults.map((item: SerperImageResult, index: number) => ({
       id: `serper_${index + 1}`,
       title: item.title || 'Untitled',
       url: item.imageUrl,
@@ -216,7 +216,8 @@ export class SerperSearchEngine implements SearchEngine {
       width: item.imageWidth,
       height: item.imageHeight,
       mimeType: getMimeTypeFromUrl(item.imageUrl),
-      fileFormat: getFileFormatFromUrl(item.imageUrl)
+      fileFormat: getFileFormatFromUrl(item.imageUrl),
+      sourceEngine: 'serper'
     }));
 
     return {

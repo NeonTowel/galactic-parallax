@@ -175,7 +175,7 @@ export class BraveSearchEngine implements SearchEngine {
     });
 
     // Convert to intermediary format
-    const allResults: IntermediarySearchResult[] = filteredResults.map((item, index) => ({
+    const allResults: IntermediarySearchResult[] = filteredResults.map((item: BraveImageResult, index: number) => ({
       id: `brave_${index + 1}`,
       title: item.title || 'Untitled',
       url: item.properties.url,
@@ -183,11 +183,12 @@ export class BraveSearchEngine implements SearchEngine {
       sourceUrl: item.url,
       sourceDomain: item.source,
       description: item.title || '',
-      width: 0, // Brave doesn't provide dimensions
-      height: 0, // Brave doesn't provide dimensions
-      fileSize: undefined, // Brave doesn't provide file size
+      width: 0, // Brave API v1 for images doesn't provide dimensions directly in the main results list
+      height: 0, // ditto
+      fileSize: undefined, // Brave API v1 for images doesn't provide file size
       mimeType: getMimeTypeFromUrl(item.properties.url),
-      fileFormat: getFileFormatFromUrl(item.properties.url)
+      fileFormat: getFileFormatFromUrl(item.properties.url),
+      sourceEngine: 'brave'
     }));
 
     return {

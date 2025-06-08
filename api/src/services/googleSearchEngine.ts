@@ -5,6 +5,7 @@ import {
   IntermediarySearchResult, 
   IntermediaryPaginationInfo,
   GoogleSearchResponse,
+  GoogleSearchResponseItem,
   ApiResponse 
 } from '../types';
 import { craftMinimalWallpaperQuery, debugLog } from './queryUtils';
@@ -108,9 +109,7 @@ export class GoogleSearchEngine implements SearchEngine {
     const totalResults = parseInt(googleResponse.searchInformation.totalResults) || 0;
     const totalPages = Math.ceil(totalResults / resultsPerPage);
 
-    // Convert all results - trust Google's filtering
-    const results: IntermediarySearchResult[] = (googleResponse.items || []).map((item, index) => {
-      // Log quality metrics for monitoring
+    const results: IntermediarySearchResult[] = (googleResponse.items || []).map((item: GoogleSearchResponseItem, index: number) => {
       debugLog('LOG_RESPONSES', '📊 [RESULT QUALITY]', {
         index: index + 1,
         dimensions: `${item.image.width}x${item.image.height}`,
@@ -131,7 +130,8 @@ export class GoogleSearchEngine implements SearchEngine {
         height: item.image.height,
         fileSize: item.image.byteSize,
         mimeType: item.mime,
-        fileFormat: item.fileFormat
+        fileFormat: item.fileFormat,
+        sourceEngine: 'google'
       };
     });
 

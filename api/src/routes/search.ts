@@ -1,11 +1,14 @@
 import { Hono } from 'hono';
 import { UnifiedSearchService } from '../services/unifiedSearchService';
+import { AggregatedSearchService } from '../services/aggregatedSearchService';
 import { CacheService } from '../services/cacheService';
 import { SearchRequest, Bindings, JWTPayload } from '../types';
 import { debugLog } from '../services/queryUtils';
 
+const USE_AGGREGATED_SEARCH = true;
+
 const search = new Hono<{ 
-  Bindings: Bindings;
+  Bindings: Bindings & { DB: any };
   Variables: {
     jwtPayload: JWTPayload;
   };
@@ -16,19 +19,20 @@ const getUnifiedSearchService = (env: Bindings) => {
   return new UnifiedSearchService(env);
 };
 
+const getAggregatedSearchService = (db: any, env: Bindings) => {
+  return new AggregatedSearchService(db, env);
+};
+
 // Protected search endpoint - main image search with caching
 search.get('/images', async (c) => {
   try {
-    const searchService = getUnifiedSearchService(c.env);
     const payload = c.get('jwtPayload');
-    
-    // Extract query parameters
     const query = c.req.query('q') || c.req.query('query');
     const orientation = c.req.query('orientation') as 'landscape' | 'portrait' | undefined;
     const count = c.req.query('count') ? parseInt(c.req.query('count')!) : undefined;
     const start = c.req.query('start') ? parseInt(c.req.query('start')!) : undefined;
-    const engine = c.req.query('engine'); // Optional engine selection
-    const tbs = c.req.query('tbs'); // Optional TBS parameters for Google search
+    const engine = c.req.query('engine');
+    const tbs = c.req.query('tbs');
 
     // Debug logging for incoming request
     debugLog('LOG_REQUESTS', '📥 [SEARCH REQUEST]', {
@@ -73,7 +77,13 @@ search.get('/images', async (c) => {
     const { data: result, fromCache } = await CacheService.withCache(
       cacheKey,
       async () => {
-        return await searchService.search(searchRequest, engine);
+        if (USE_AGGREGATED_SEARCH) {
+          const service = getAggregatedSearchService(c.env.DB, c.env);
+          return await service.search(searchRequest, payload.sub);
+        } else {
+          const service = getUnifiedSearchService(c.env);
+          return await service.search(searchRequest, engine);
+        }
       },
       'search'
     );
@@ -122,72 +132,34 @@ search.get('/images', async (c) => {
   }
 });
 
-// Protected search suggestions endpoint with caching
+// New endpoint for search suggestions
 search.get('/suggestions', async (c) => {
   try {
     const payload = c.get('jwtPayload');
-    const category = c.req.query('category') || 'general';
-    
-    // Create cache key for suggestions
-    const cacheKey = CacheService.createSuggestionsCacheKey(category);
+    const prefix = c.req.query('q');
 
-    // Use cache-aware suggestions operation
-    const { data: suggestionsData, fromCache } = await CacheService.withCache(
-      cacheKey,
-      async () => {
-        const suggestions = {
-          general: [
-            'nature landscape',
-            'abstract art',
-            'space galaxy',
-            'minimalist design',
-            'city skyline',
-            'ocean waves'
-          ],
-          landscape: [
-            'mountain vista',
-            'forest path',
-            'desert sunset',
-            'lake reflection',
-            'aurora borealis',
-            'canyon view'
-          ],
-          portrait: [
-            'abstract vertical',
-            'geometric patterns',
-            'botanical close-up',
-            'architectural details',
-            'texture study',
-            'color gradient'
-          ]
-        };
+    // Return empty if no prefix or prefix is too short (e.g., less than 2 chars)
+    if (!prefix || prefix.length < 2) {
+      return c.json({
+        success: true,
+        data: []
+      }, 200);
+    }
 
-        return {
-          category,
-          suggestions: suggestions[category as keyof typeof suggestions] || suggestions.general,
-          generatedAt: new Date().toISOString()
-        };
-      },
-      'suggestions'
-    );
+    const service = getAggregatedSearchService(c.env.DB, c.env);
+    const suggestions = await service.getSearchSuggestions(prefix, payload.sub);
 
     return c.json({
       success: true,
-      data: {
-        ...suggestionsData,
-        user: payload.sub,
-        requestedAt: new Date().toISOString(),
-        cached: fromCache,
-        cacheKey: fromCache ? cacheKey : undefined
-      }
-    });
+      data: suggestions
+    }, 200);
+
   } catch (error) {
-    console.error('Suggestions endpoint error:', error);
-    return c.json({
-      success: false,
-      error: 'Internal server error',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, 500);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error fetching suggestions';
+    debugLog('LOG_REQUESTS', '❌ [SUGGESTION FAILED]', { error: errorMessage });
+    // It's good practice to log the actual error object for more details if possible
+    // console.error(error); 
+    return c.json({ success: false, error: 'Failed to fetch suggestions' }, 500);
   }
 });
 
@@ -323,6 +295,32 @@ search.delete('/cache/clear', async (c) => {
       success: false,
       error: 'Failed to clear cache'
     }, 500);
+  }
+});
+
+// New endpoint to clear user-specific cache
+search.post('/cache/clear', async (c) => {
+  try {
+    const payload = c.get('jwtPayload');
+    const userId = payload.sub;
+
+    if (!userId) {
+      return c.json({ success: false, error: 'User authentication required.' }, 401);
+    }
+
+    const service = getAggregatedSearchService(c.env.DB, c.env);
+    const result = await service.clearUserCache(userId);
+
+    if (result.success) {
+      return c.json({ success: true, message: result.message }, 200);
+    } else {
+      return c.json({ success: false, error: result.error || 'Failed to clear cache' }, 500);
+    }
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error clearing cache';
+    debugLog('LOG_REQUESTS', '💥 [CACHE CLEAR ENDPOINT EXCEPTION]', { error: errorMessage });
+    return c.json({ success: false, error: 'An unexpected server error occurred.' }, 500);
   }
 });
 

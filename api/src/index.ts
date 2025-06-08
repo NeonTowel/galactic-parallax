@@ -3,6 +3,7 @@ import { cors } from 'hono/cors';
 import { jwtVerify, createRemoteJWKSet } from 'jose';
 import { search } from './routes/search';
 import { Bindings, JWTPayload } from './types';
+import { AggregatedResultsDurableObject } from './services/aggregatedResultsDurableObject';
 
 const app = new Hono<{ 
   Bindings: Bindings;
@@ -233,5 +234,7 @@ app.notFound((c) => {
     ]
   }, 404);
 });
+
+export { AggregatedResultsDurableObject };
 
 export default app;
