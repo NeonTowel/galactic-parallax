@@ -12,6 +12,7 @@ export interface SearchResult {
   fileSize?: number;
   mimeType: string;
   fileFormat: string;
+  source_engine?: string;
 }
 
 export interface PaginationInfo {

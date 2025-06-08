@@ -120,6 +120,30 @@ class ApiService {
     const endpoint = `/api/search/cache${searchParams.toString() ? '?' + searchParams.toString() : ''}`;
     return this.makeRequest(endpoint, { method: 'DELETE' });
   }
+
+  // New method to clear the current user's D1 search cache
+  async clearUserSearchCache(): Promise<{ success: boolean; message?: string; error?: string }> {
+    const endpoint = '/api/search/cache/clear';
+    // The backend endpoint is POST and doesn't require a body for this specific action
+    // It uses the JWT to identify the user.
+    return this.makeRequest<{ success: boolean; message?: string; error?: string }>(
+      endpoint, 
+      { method: 'POST' }
+    );
+  }
+
+  // Method to fetch search suggestions
+  async getSearchSuggestions(prefix: string): Promise<{ success: boolean; data?: string[]; error?: string }> {
+    if (!prefix || prefix.trim().length < 2) { // Typically, don't search for suggestions on very short prefixes
+      return { success: true, data: [] };
+    }
+    const searchParams = new URLSearchParams({ q: prefix });
+    const endpoint = `/api/search/suggestions?${searchParams.toString()}`;
+    return this.makeRequest<{ success: boolean; data?: string[]; error?: string }>(
+      endpoint, 
+      { method: 'GET' } // Suggestions are fetched via GET
+    );
+  }
 }
 
 export const apiService = new ApiService(API_BASE_URL); 

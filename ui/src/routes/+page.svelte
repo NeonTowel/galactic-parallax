@@ -9,6 +9,7 @@
   } from "$lib/auth.js";
   import { apiService } from "$lib/api.js";
   import type { SearchResponse, SearchResult } from "$lib/types.js";
+  import { onMount, onDestroy } from "svelte";
 
   let searchQuery = "";
   let isSearching = false;
@@ -17,6 +18,17 @@
   let orientation: "landscape" | "portrait" = "landscape";
   let currentPage = 1;
   const resultsPerPage = 10;
+  let isClearingCache = false;
+  let clearCacheMessage: string | null = null;
+  let clearCacheError: string | null = null;
+
+  // --- Search Suggestions State ---
+  let suggestions: string[] = [];
+  let isFetchingSuggestions = false;
+  let suggestionsError: string | null = null;
+  let showSuggestions = false;
+  let suggestionTimeoutId: number | undefined = undefined;
+  const DEBOUNCE_DELAY = 300; // milliseconds
 
   // Calculate pagination from intermediary schema
   $: pagination = searchResults?.data?.pagination;
@@ -31,6 +43,7 @@
 
     isSearching = true;
     searchError = null;
+    showSuggestions = false; // Hide suggestions when search starts
     currentPage = page;
 
     try {
@@ -52,9 +65,63 @@
     }
   }
 
+  // --- Fetch Search Suggestions (Debounced) ---
+  async function fetchSuggestions() {
+    if (!searchQuery.trim() || searchQuery.length < 2) {
+      suggestions = [];
+      showSuggestions = false;
+      return;
+    }
+
+    isFetchingSuggestions = true;
+    suggestionsError = null;
+
+    try {
+      const response = await apiService.getSearchSuggestions(searchQuery);
+      if (response.success && response.data) {
+        suggestions = response.data;
+        showSuggestions = suggestions.length > 0;
+      } else {
+        suggestionsError = response.error || "Failed to fetch suggestions.";
+        suggestions = [];
+        showSuggestions = false;
+      }
+    } catch (error) {
+      console.error("Suggestions fetch error:", error);
+      suggestionsError =
+        error instanceof Error ? error.message : "Error fetching suggestions.";
+      suggestions = [];
+      showSuggestions = false;
+    } finally {
+      isFetchingSuggestions = false;
+    }
+  }
+
+  function debouncedFetchSuggestions() {
+    clearTimeout(suggestionTimeoutId);
+    if (searchQuery.length >= 2) {
+      // Only fetch if query is long enough
+      suggestionTimeoutId = window.setTimeout(fetchSuggestions, DEBOUNCE_DELAY);
+    } else {
+      suggestions = [];
+      showSuggestions = false;
+    }
+  }
+
+  function handleSuggestionClick(suggestion: string) {
+    searchQuery = suggestion;
+    showSuggestions = false;
+    handleSearch(1); // Optionally trigger search immediately
+  }
+
   function handleKeydown(event: KeyboardEvent) {
     if (event.key === "Enter") {
+      showSuggestions = false; // Hide suggestions on Enter
       handleSearch(1);
+    }
+    // Basic Escape key handling for suggestions
+    if (event.key === "Escape") {
+      showSuggestions = false;
     }
   }
 
@@ -74,7 +141,44 @@
     searchResults = null;
     searchError = null;
     searchQuery = "";
+    suggestions = [];
+    showSuggestions = false;
     currentPage = 1;
+  }
+
+  async function handleClearCache() {
+    isClearingCache = true;
+    clearCacheMessage = null;
+    clearCacheError = null;
+
+    try {
+      const response = await apiService.clearUserSearchCache();
+      if (response.success) {
+        clearCacheMessage =
+          response.message || "Your search cache has been cleared.";
+        searchResults = null; // Clear displayed results
+        currentPage = 1; // Reset pagination
+        searchQuery = "";
+        suggestions = [];
+        showSuggestions = false;
+      } else {
+        clearCacheError =
+          response.error || "Failed to clear cache. Please try again.";
+      }
+    } catch (error) {
+      console.error("Clear cache error:", error);
+      clearCacheError =
+        error instanceof Error
+          ? error.message
+          : "An unexpected error occurred while clearing cache.";
+    } finally {
+      isClearingCache = false;
+      // Auto-hide messages after a few seconds
+      setTimeout(() => {
+        clearCacheMessage = null;
+        clearCacheError = null;
+      }, 5000);
+    }
   }
 
   // Generate pagination numbers
@@ -94,6 +198,24 @@
 
     return numbers;
   })();
+
+  // Hide suggestions if user clicks outside
+  function handleClickOutside(event: MouseEvent) {
+    const target = event.target as HTMLElement;
+    if (showSuggestions && !target.closest(".search-input-container")) {
+      // Assign a class to container
+      showSuggestions = false;
+    }
+  }
+
+  onMount(() => {
+    document.addEventListener("click", handleClickOutside);
+  });
+
+  onDestroy(() => {
+    document.removeEventListener("click", handleClickOutside);
+    clearTimeout(suggestionTimeoutId); // Clear timeout on component destroy
+  });
 </script>
 
 <main class="min-h-screen bg-rose-pine-base text-rose-pine-text">
@@ -214,6 +336,15 @@
               </button>
             {/if}
             <button
+              on:click={handleClearCache}
+              disabled={isClearingCache}
+              class="px-4 py-2 text-rose-pine-muted hover:text-rose-pine-text
+                     border border-rose-pine-overlay hover:border-rose-pine-subtle
+                     rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isClearingCache ? "Clearing..." : "Clear My Cache"}
+            </button>
+            <button
               on:click={logout}
               class="px-4 py-2 text-rose-pine-muted hover:text-rose-pine-text
                      border border-rose-pine-overlay hover:border-rose-pine-subtle
@@ -237,12 +368,33 @@
 
         <!-- Search Controls -->
         <div class="w-full max-w-4xl mx-auto space-y-4">
-          <!-- Search Input -->
-          <div class="relative">
+          <!-- Cache Clear Messages -->
+          {#if clearCacheMessage}
+            <div
+              class="p-3 bg-rose-pine-foam/10 border border-rose-pine-foam/20 rounded-lg text-rose-pine-foam text-sm"
+            >
+              {clearCacheMessage}
+            </div>
+          {/if}
+          {#if clearCacheError}
+            <div
+              class="p-3 bg-rose-pine-love/10 border border-rose-pine-love/20 rounded-lg text-rose-pine-love text-sm"
+            >
+              {clearCacheError}
+            </div>
+          {/if}
+
+          <!-- Search Input and Suggestions Container -->
+          <div class="relative search-input-container">
             <input
               type="text"
               bind:value={searchQuery}
+              on:input={debouncedFetchSuggestions}
               on:keydown={handleKeydown}
+              on:focus={() => {
+                if (searchQuery.length >= 2 && suggestions.length > 0)
+                  showSuggestions = true;
+              }}
               placeholder="Type in your search..."
               disabled={isSearching}
               class="w-full px-6 py-4 text-xl bg-rose-pine-surface border-2 border-rose-pine-overlay rounded-xl
@@ -250,14 +402,46 @@
                      placeholder:text-rose-pine-muted text-rose-pine-text
                      transition-all duration-200 ease-in-out
                      disabled:opacity-50 disabled:cursor-not-allowed"
+              autocomplete="off"
             />
 
-            <!-- Loading indicator -->
-            {#if isSearching}
+            <!-- Loading indicator for search input -->
+            {#if isSearching || isFetchingSuggestions}
               <div class="absolute right-4 top-1/2 transform -translate-y-1/2">
                 <div
                   class="animate-spin rounded-full h-6 w-6 border-2 border-rose-pine-iris border-t-transparent"
                 ></div>
+              </div>
+            {/if}
+
+            <!-- Suggestions Dropdown -->
+            {#if showSuggestions && suggestions.length > 0}
+              <ul
+                class="absolute z-20 w-full mt-1 bg-rose-pine-surface border-2 border-rose-pine-overlay rounded-lg shadow-xl max-h-60 overflow-y-auto"
+              >
+                {#each suggestions as suggestion (suggestion)}
+                  <li
+                    class="px-4 py-2 text-rose-pine-text hover:bg-rose-pine-muted cursor-pointer"
+                    on:click={() => handleSuggestionClick(suggestion)}
+                    on:mousedown|preventDefault
+                  >
+                    {suggestion}
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+            {#if showSuggestions && suggestions.length === 0 && searchQuery.length >= 2 && !isFetchingSuggestions && !suggestionsError}
+              <div
+                class="absolute z-20 w-full mt-1 bg-rose-pine-surface border-2 border-rose-pine-overlay rounded-lg shadow-xl p-3 text-sm text-rose-pine-muted"
+              >
+                No suggestions found.
+              </div>
+            {/if}
+            {#if suggestionsError && showSuggestions}
+              <div
+                class="absolute z-20 w-full mt-1 bg-rose-pine-surface border-2 border-rose-pine-love/50 rounded-lg shadow-xl p-3 text-sm text-rose-pine-love"
+              >
+                Error: {suggestionsError}
               </div>
             {/if}
           </div>
@@ -389,6 +573,16 @@
                         ? (result.fileSize / 1024 / 1024).toFixed(1) + "MB"
                         : "N/A"}</span
                     >
+                    {#if result.source_engine}
+                      <div class="mt-1 text-right">
+                        <span
+                          class="inline-block text-xs bg-rose-pine-overlay text-rose-pine-subtle px-1.5 py-0.5 rounded-sm"
+                        >
+                          {result.source_engine.charAt(0).toUpperCase() +
+                            result.source_engine.slice(1)}
+                        </span>
+                      </div>
+                    {/if}
                   </div>
                 </div>
 
