@@ -8,14 +8,18 @@ _A project conceived somewhere between improbable timelines, existential program
 
 The universe is full of strange things: sentient doorbells, rain in Islington, and all the wrong sorts of lizards in power. It also desperately needs better desktop wallpapers. **Galactic Parallax** is a web app that aims to correct that last bit, by making intergalactic-quality backgrounds easier to discover than Arthur Dent's misplaced cup of tea.
 
-Currently, this is a launch pad: a SvelteKit frontend and Cloudflare Worker API backend, both awaiting the arrival of actual, marvelous wallpaper-search features. Much like British weather, it is subject to sudden and inexplicable change.
+The initial launch phase is complete! **Galactic Parallax** now boasts a SvelteKit frontend (live on Netlify) and a powerful Cloudflare Worker API backend, actively delivering those once-awaited, marvelous wallpaper-search features. It's proven to be more reliable than a Babel fish, though perhaps just as surprising at times.
+
+You can find the live application at: [https://parallax.neontowel.dev](https://parallax.neontowel.dev)
+
+**Please Note:** For now and the foreseeable future, usage is limited to permitted email accounts solely for internal use.
 
 ---
 
 ## Technology (Probably Harmless)
 
 - **Frontend**: SvelteKit, Tailwind CSS, TypeScript, Vite
-- **Backend**: Hono (JavaScript/TypeScript), Cloudflare Workers, Auth0-protected endpoints. For detailed API documentation, see `api/README.md`.
+- **Backend**: Hono (JavaScript/TypeScript) on Cloudflare Workers, utilizing Auth0 for authentication and Cloudflare D1 for data persistence. For detailed API documentation, see `api/README.md`.
 
 ---
 
@@ -34,7 +38,7 @@ Currently, this is a launch pad: a SvelteKit frontend and Cloudflare Worker API 
 
    ```
    cd ui
-   bun install   # or npm install
+   bun install   # Uses bun as package manager (bun.lockb present)
    ```
 
    **Backend**
@@ -67,6 +71,7 @@ Currently, this is a launch pad: a SvelteKit frontend and Cloudflare Worker API 
   - Supports multiple search engines (Brave Search, Zenserp, Serper, Google) for diverse results.
   - Delivers high-quality image search, optimized for 2K+ wallpapers with orientation filtering and smart query crafting (including TBS parameters).
   - Features an intelligent in-memory caching system for search results and suggestions, significantly boosting performance.
+  - Utilizes Cloudflare D1 for persistent data storage (e.g., operational data, potentially user-related information).
   - Offers categorized search suggestions to aid discovery.
   - All core search endpoints are secured with Auth0 JWT authentication, including user context tracking.
   - Provides configurable search engine selection and detailed debug logging.
