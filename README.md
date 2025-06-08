@@ -15,13 +15,14 @@ Currently, this is a launch pad: a SvelteKit frontend and Cloudflare Worker API 
 ## Technology (Probably Harmless)
 
 - **Frontend**: SvelteKit, Tailwind CSS, TypeScript, Vite
-- **Backend**: Hono (JavaScript/TypeScript), Cloudflare Workers, Auth0-protected endpoints
+- **Backend**: Hono (JavaScript/TypeScript), Cloudflare Workers, Auth0-protected endpoints. For detailed API documentation, see `api/README.md`.
 
 ---
 
 ## Setup Guide (May Require a Duck Pond)
 
 1. **Clone the repository** (Don't panic!)
+
    ```
    git clone https://github.com/NeonTowel/galactic-parallax.git
    cd galactic-parallax
@@ -30,25 +31,29 @@ Currently, this is a launch pad: a SvelteKit frontend and Cloudflare Worker API 
 2. **Install dependencies**
 
    **Frontend**
+
    ```
    cd ui
    bun install   # or npm install
    ```
 
    **Backend**
+
    ```
    cd ../api
-   yarn install
+   yarn install   # See api/README.md for required environment variable setup (e.g., API keys)
    ```
 
 3. **Running in development**
 
    **Frontend**
+
    ```
    bun run dev   # or npm run dev
    ```
 
    **Backend**
+
    ```
    yarn dev
    ```
@@ -57,9 +62,17 @@ Currently, this is a launch pad: a SvelteKit frontend and Cloudflare Worker API 
 
 ## Features (So Far)
 
-- SvelteKit frontend, almost as friendly as the Sirius Cybernetics Corporation's products (but much more functional)
-- Cloudflare Worker API, ready for when "search" means more than existential angst
-- Authentication via Auth0—no need to forge Vogon paperwork
+- SvelteKit frontend, almost as friendly as the Sirius Cybernetics Corporation's products (but much more functional).
+- **Powerful Cloudflare Worker API Backend**:
+  - Supports multiple search engines (Brave Search, Zenserp, Serper, Google) for diverse results.
+  - Delivers high-quality image search, optimized for 2K+ wallpapers with orientation filtering and smart query crafting (including TBS parameters).
+  - Features an intelligent in-memory caching system for search results and suggestions, significantly boosting performance.
+  - Offers categorized search suggestions to aid discovery.
+  - All core search endpoints are secured with Auth0 JWT authentication, including user context tracking.
+  - Provides configurable search engine selection and detailed debug logging.
+  - Implements advanced URL validation and image filtering to ensure quality.
+  - _For a comprehensive guide to API features, all endpoints, and detailed configuration options, please consult `api/README.md`._
+- Authentication via Auth0—no need to forge Vogon paperwork for the frontend.
 
 ---
 
@@ -72,4 +85,4 @@ Absolutely free. Like dolphins, this code is released to the world with minimal 
 
 ## Contributing
 
-Contributions, bug reports, limericks about rain or doom, and especially improbable pull requests are welcomed. Please, no poetry in the code—unless it's very, very good. 
+Contributions, bug reports, limericks about rain or doom, and especially improbable pull requests are welcomed. Please, no poetry in the code—unless it's very, very good.
